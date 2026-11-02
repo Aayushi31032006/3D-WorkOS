@@ -25,7 +25,11 @@ const detectWebGL = (): boolean => {
   if (typeof document === 'undefined') return false;
   try {
     const canvas = document.createElement('canvas');
-    return Boolean(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
+    const attributes = { failIfMajorPerformanceCaveat: true };
+    return Boolean(
+      canvas.getContext('webgl', attributes) ||
+      canvas.getContext('experimental-webgl', attributes)
+    );
   } catch {
     return false;
   }
@@ -93,6 +97,7 @@ export const ObjectSpaceExplorer: React.FC<ObjectSpaceExplorerProps> = ({
 
   // In-flight request cancellation reference (Requirement 2.1)
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sceneErrorHandledRef = useRef(false);
   const prevCompanyRef = useRef(companyContext);
   const prevStartingIdRef = useRef(startingId);
   const prevProviderRef = useRef(dataProvider);
@@ -466,9 +471,13 @@ export const ObjectSpaceExplorer: React.FC<ObjectSpaceExplorerProps> = ({
               }}
               theme={theme}
               onSceneError={() => {
-                setHasWebGL(false);
-                setViewMode('List');
-                setWebGlFallbackMessage('3D scene context lost. Restored in accessible List view.');
+                if (sceneErrorHandledRef.current) return;
+                sceneErrorHandledRef.current = true;
+                window.setTimeout(() => {
+                  setHasWebGL(false);
+                  setViewMode('List');
+                  setWebGlFallbackMessage('3D scene context lost. Restored in accessible List view.');
+                }, 0);
               }}
             />
           </div>
