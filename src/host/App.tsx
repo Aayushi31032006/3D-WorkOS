@@ -1,53 +1,51 @@
 import React, { useState, useMemo } from 'react';
 import { WorkOSHeader } from './WorkOSHeader';
 import { PMSPlaceholder } from './PMSPlaceholder';
-import { ThreeJsInspectorModal } from './ThreeJsInspectorModal';
-import { DatabaseInspectorModal } from './DatabaseInspectorModal';
 import { WorkOSModuleView } from './WorkOSModuleViews';
 import { ObjectSpaceExplorer } from '../explorer';
 import { MockDataProvider } from '../data/mockDataProvider';
 import { ReturnContext, BusinessObject } from '../types';
+import './host.css';
 
 export const App: React.FC = () => {
   // Demo Host Navigation State
   const [activeNavTab, setActiveNavTab] = useState<string>('object_space');
   const [activeScreen, setActiveScreen] = useState<'object_space' | 'pms_placeholder'>('object_space');
   
-  // Execution Handoff State
+  // Execution Handoff State (Figure 3 item 3)
   const [executionRecordId, setExecutionRecordId] = useState<string | null>(null);
   const [executionRecord, setExecutionRecord] = useState<BusinessObject | undefined>(undefined);
   const [savedReturnContext, setSavedReturnContext] = useState<ReturnContext | null>(null);
 
-  // Company Scoping State
+  // Company Partitioning State
   const [currentCompany, setCurrentCompany] = useState<string>('company_globex');
 
-  // Edge Case Simulation Flags (Default large collection stress true so 1,000 records are immediately active)
+  // Edge Case Simulation Flags (Requirement 1.1: 1K Records default OFF)
   const [simulateError, setSimulateError] = useState<boolean>(false);
   const [simulateEmpty, setSimulateEmpty] = useState<boolean>(false);
-  const [largeCollectionStress, setLargeCollectionStress] = useState<boolean>(true);
+  const [largeCollectionStress, setLargeCollectionStress] = useState<boolean>(false);
+  const [restrictedDemo, setRestrictedDemo] = useState<boolean>(false);
 
-  // Inspector Modals State
-  const [isThreeJsInspectorOpen, setIsThreeJsInspectorOpen] = useState<boolean>(false);
-  const [isDatabaseInspectorOpen, setIsDatabaseInspectorOpen] = useState<boolean>(false);
-  const [dbResetKey, setDbResetKey] = useState<number>(0);
-
-  // Instantiate data provider
+  // Instantiate data provider with active mock configuration
   const dataProvider = useMemo(() => {
     return new MockDataProvider({
-      networkDelayMs: 140,
+      networkDelayMs: 100,
       simulateError,
       simulateEmptyGroup: simulateEmpty,
       useLargeCollectionStress: largeCollectionStress
     });
-  }, [simulateError, simulateEmpty, largeCollectionStress, dbResetKey]);
+  }, [simulateError, simulateEmpty, largeCollectionStress]);
 
-  // Determine starting root object by company
-  const startingObjectId = currentCompany === 'company_globex' ? 'cust_globex' : 'cust_initech';
+  // Determine starting root object by company partition
+  const startingObjectId = restrictedDemo
+    ? 'record_restricted'
+    : currentCompany === 'company_globex' ? 'cust_globex' : 'cust_initech';
 
   const handleCompanyChange = (newCompanyId: string) => {
     setCurrentCompany(newCompanyId);
     setSavedReturnContext(null);
     setActiveScreen('object_space');
+    setRestrictedDemo(false);
   };
 
   const handleOpenExecution = async (recordId: string, returnContext: ReturnContext) => {
@@ -69,26 +67,6 @@ export const App: React.FC = () => {
     setActiveScreen('object_space');
   };
 
-  const handleDatabaseReset = () => {
-    setDbResetKey(k => k + 1);
-    setSavedReturnContext(null);
-    setActiveScreen('object_space');
-  };
-
-  const handleDirectNavigateToRecord = (targetId: string) => {
-    setSavedReturnContext({
-      objectId: targetId,
-      breadcrumbTrail: [
-        { id: 'objects_root', label: 'Objects', type: 'category' },
-        { id: targetId, label: targetId, type: 'customer' }
-      ],
-      viewMode: '3D',
-      timestamp: Date.now()
-    });
-    setActiveNavTab('object_space');
-    setActiveScreen('object_space');
-  };
-
   return (
     <div className="workos-host-container">
       {/* Top WorkOS Navigation Bar */}
@@ -101,6 +79,12 @@ export const App: React.FC = () => {
         onToggleSimulateEmpty={() => setSimulateEmpty(prev => !prev)}
         largeCollectionStress={largeCollectionStress}
         onToggleLargeCollectionStress={() => setLargeCollectionStress(prev => !prev)}
+        restrictedDemo={restrictedDemo}
+        onToggleRestrictedDemo={() => {
+          setRestrictedDemo(prev => !prev);
+          setSavedReturnContext(null);
+          setActiveScreen('object_space');
+        }}
         activeNavTab={activeNavTab}
         onNavTabChange={(tab) => {
           setActiveNavTab(tab);
@@ -108,19 +92,16 @@ export const App: React.FC = () => {
             setActiveScreen('object_space');
           }
         }}
-        onOpenThreeJsInspector={() => setIsThreeJsInspectorOpen(true)}
-        onOpenDatabaseInspector={() => setIsDatabaseInspectorOpen(true)}
       />
 
-      {/* Main Content Area: Object Space Explorer, Module Views, or WorkOS PMS Screen */}
+      {/* Main Content Area */}
       {activeNavTab !== 'object_space' ? (
         <WorkOSModuleView
-          module={activeNavTab as any}
+          module={activeNavTab}
           onReturnToObjectSpace={() => {
             setActiveNavTab('object_space');
             setActiveScreen('object_space');
           }}
-          onNavigateToRecord={handleDirectNavigateToRecord}
         />
       ) : activeScreen === 'pms_placeholder' && executionRecordId && savedReturnContext ? (
         <PMSPlaceholder
@@ -131,7 +112,6 @@ export const App: React.FC = () => {
         />
       ) : (
         <ObjectSpaceExplorer
-          key={`${currentCompany}_${savedReturnContext?.timestamp || 'root'}_${dbResetKey}`}
           startingId={startingObjectId}
           companyContext={currentCompany}
           dataProvider={dataProvider}
@@ -139,18 +119,6 @@ export const App: React.FC = () => {
           onOpenExecution={handleOpenExecution}
         />
       )}
-
-      {/* Architecture & Database Inspectors */}
-      <ThreeJsInspectorModal
-        isOpen={isThreeJsInspectorOpen}
-        onClose={() => setIsThreeJsInspectorOpen(false)}
-      />
-
-      <DatabaseInspectorModal
-        isOpen={isDatabaseInspectorOpen}
-        onClose={() => setIsDatabaseInspectorOpen(false)}
-        onReset={handleDatabaseReset}
-      />
     </div>
   );
 };

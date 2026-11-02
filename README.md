@@ -83,7 +83,7 @@ F:\3DWorkOS\
 
 ### 1. Canonical Customer Journey
 1. Open the app $\rightarrow$ **Globex Ltd** (Customer) is centered on the central plinth.
-2. Observe surrounding spheres: **Invoices (7)**, **Projects (2)**, **Contacts (5)**, **Tasks (8)**, **Contracts (2)**, **Products (3)**.
+2. Observe surrounding spheres: **Invoices (7)**, **Projects (2)**, **Contacts (2)**, **Contracts (3)** and the connected task/product groups derived from the sample graph.
 3. Click the **Invoices (7)** sphere $\rightarrow$ Opens drawer titled *"Invoices for Globex Ltd"*.
 4. Choose **INV-0042** $\rightarrow$ Collection panel closes; `INV-0042` animates to center as the new central record.
 5. Surrounding spheres update to show: **Globex Ltd** (Customer), **Project Alpha** (Project), **Payment**, and **Tasks (3)**. Breadcrumb reads `Objects / Globex Ltd / Invoices / INV-0042`.
@@ -124,13 +124,22 @@ F:\3DWorkOS\
 
 ---
 
+## Data provider integration
+
+Replace `MockDataProvider` in [src/host/App.tsx](./src/host/App.tsx) with an
+implementation of `DataProvider`. The explorer only depends on the public
+methods in [src/types/index.ts](./src/types/index.ts). Linked records are
+resolved from relationship IDs, so a production provider does not need any
+mock-specific helper.
+
+## Demo controls
+
+The header includes company switching, `Test 1K`, `Test Empty`, `Test Error`
+and `Test Restricted`. The 1K mode adds stable invoice IDs beginning at
+`inv_0048` and the collection loads the resulting 1,000 records 20 at a time.
+
 ## Testing & Quality Assurance
 
-Automated test suite covers all 7 specification areas:
-- Initial render & breadcrumb hierarchy
-- Full customer $\rightarrow$ invoice $\rightarrow$ project $\rightarrow$ return flow
-- Details panel field extraction & WorkOS handoff
-- Return context state restoration
-- Stable business object IDs across navigations
-- Error recovery via Retry
-- Large collection pagination (1,000 records)
+The Vitest suite covers the initial graph, List view journey, handoff and
+return context, dynamic project links, stable IDs, empty/error/restricted
+states, company changes and large-collection paging.

@@ -6,9 +6,7 @@ import {
   Eye, 
   LayoutGrid, 
   Layers, 
-  Building,
-  Database,
-  Sparkles
+  Building
 } from 'lucide-react';
 
 export interface WorkOSHeaderProps {
@@ -20,10 +18,10 @@ export interface WorkOSHeaderProps {
   onToggleSimulateEmpty: () => void;
   largeCollectionStress: boolean;
   onToggleLargeCollectionStress: () => void;
+  restrictedDemo: boolean;
+  onToggleRestrictedDemo: () => void;
   activeNavTab: string;
   onNavTabChange: (tab: string) => void;
-  onOpenThreeJsInspector: () => void;
-  onOpenDatabaseInspector: () => void;
 }
 
 export const WorkOSHeader: React.FC<WorkOSHeaderProps> = ({
@@ -35,10 +33,10 @@ export const WorkOSHeader: React.FC<WorkOSHeaderProps> = ({
   onToggleSimulateEmpty,
   largeCollectionStress,
   onToggleLargeCollectionStress,
+  restrictedDemo,
+  onToggleRestrictedDemo,
   activeNavTab,
-  onNavTabChange,
-  onOpenThreeJsInspector,
-  onOpenDatabaseInspector
+  onNavTabChange
 }) => {
   const navItems = [
     { id: 'world', label: 'World', icon: Globe },
@@ -51,10 +49,10 @@ export const WorkOSHeader: React.FC<WorkOSHeaderProps> = ({
 
   return (
     <header className="workos-top-header" role="banner">
-      {/* Brand & WorkOS Top Navigation (Matching Figure 1 & 2) */}
+      {/* Brand & WorkOS Top Navigation (Matching Figure 1 & 2 item 1) */}
       <div className="workos-nav-brand">
         <div className="workos-logo-badge">
-          <Box size={20} color="var(--wos-selection)" />
+          <Box size={20} color="#7046B2" />
           <span>WorkOS</span>
         </div>
 
@@ -77,32 +75,11 @@ export const WorkOSHeader: React.FC<WorkOSHeaderProps> = ({
         </nav>
       </div>
 
-      {/* Demo Host Controls (Company Switcher, Architecture & Edge Simulation) */}
+      {/* Demo Host Controls (Company Switcher & Edge State Simulation) */}
       <div className="workos-demo-controls">
-        {/* Architecture Inspector Buttons */}
-        <button
-          className="workos-toggle-btn"
-          onClick={onOpenThreeJsInspector}
-          title="Inspect where Three.js is used and scene pipeline"
-          style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-        >
-          <Sparkles size={13} color="var(--wos-selection)" />
-          <span>Three.js Info</span>
-        </button>
-
-        <button
-          className="workos-toggle-btn"
-          onClick={onOpenDatabaseInspector}
-          title="Inspect local database schema and stored records"
-          style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-        >
-          <Database size={13} color="var(--wos-selection)" />
-          <span>Database</span>
-        </button>
-
-        {/* Company Scoping Switcher */}
+        {/* Company Scoping Switcher (Requirement 1.13) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Building size={14} color="var(--wos-label-muted)" />
+          <Building size={14} color="#6B5E87" />
           <select
             className="workos-select"
             value={currentCompany}
@@ -114,7 +91,7 @@ export const WorkOSHeader: React.FC<WorkOSHeaderProps> = ({
           </select>
         </div>
 
-        {/* 1,000 Records Test Toggle */}
+        {/* 1,000 Records Test Toggle (Requirement 1.1: Default OFF) */}
         <button
           className={`workos-toggle-btn ${largeCollectionStress ? 'btn-active' : ''}`}
           onClick={onToggleLargeCollectionStress}
@@ -123,7 +100,7 @@ export const WorkOSHeader: React.FC<WorkOSHeaderProps> = ({
           {largeCollectionStress ? '1K Records: ON' : 'Test 1K Records'}
         </button>
 
-        {/* Empty Group State Toggle */}
+        {/* Empty Group State Toggle (Requirement 1.11) */}
         <button
           className={`workos-toggle-btn ${simulateEmpty ? 'btn-active' : ''}`}
           onClick={onToggleSimulateEmpty}
@@ -132,13 +109,21 @@ export const WorkOSHeader: React.FC<WorkOSHeaderProps> = ({
           {simulateEmpty ? 'Empty: ON' : 'Test Empty'}
         </button>
 
-        {/* Error Simulation State Toggle */}
+        {/* Error Simulation State Toggle (Requirement 1.10) */}
         <button
           className={`workos-toggle-btn ${simulateError ? 'btn-danger-active' : ''}`}
           onClick={onToggleSimulateError}
           title="Simulate network failure and error retry"
         >
           {simulateError ? 'Error: ON' : 'Test Error'}
+        </button>
+
+        <button
+          className={`workos-toggle-btn ${restrictedDemo ? 'btn-active' : ''}`}
+          onClick={onToggleRestrictedDemo}
+          title="Open the restricted-record privacy demonstration"
+        >
+          {restrictedDemo ? 'Restricted: ON' : 'Test Restricted'}
         </button>
       </div>
     </header>

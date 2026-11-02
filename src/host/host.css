@@ -1,0 +1,172 @@
+/* WorkOS Host Application Styles (Separate from scoped explorer) */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #F5F3FA;
+  color: #30264C;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Host Container */
+.workos-host-container {
+  display: flex;
+  flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  background-color: #F5F3FA;
+  overflow: hidden;
+}
+
+/* WorkOS Top Header */
+.workos-top-header {
+  height: 56px;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(112, 70, 178, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: 50;
+  flex-shrink: 0;
+}
+
+.workos-nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.workos-logo-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 15px;
+  color: #7046B2;
+  letter-spacing: -0.01em;
+}
+
+.workos-nav-items {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workos-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6B5E87;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.workos-nav-item:hover {
+  background: rgba(112, 70, 178, 0.05);
+  color: #30264C;
+}
+
+.workos-nav-item.active {
+  background: #EDE7F6;
+  color: #7046B2;
+  font-weight: 600;
+}
+
+.workos-demo-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.workos-select {
+  padding: 6px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(112, 70, 178, 0.14);
+  background: #fff;
+  color: #30264C;
+  font-size: 12px;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+}
+
+.workos-toggle-btn {
+  padding: 5px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(112, 70, 178, 0.14);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6B5E87;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.workos-toggle-btn:hover {
+  background: #EDE7F6;
+  color: #7046B2;
+}
+
+.workos-toggle-btn.btn-active {
+  background: #ffecb3;
+  color: #8c5b00;
+  border-color: #ffd54f;
+  font-weight: 600;
+}
+
+.workos-toggle-btn.btn-danger-active {
+  background: #ffebee;
+  color: #c62828;
+  border-color: #ef9a9a;
+  font-weight: 600;
+}
+
+/* PMS Placeholder Screen (Requirement 1.16 & Host Demo) */
+.workos-pms-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #F5F3FA;
+  padding: 40px;
+  text-align: center;
+}
+
+.workos-pms-box {
+  background: #ffffff;
+  border: 1px solid rgba(112, 70, 178, 0.14);
+  border-radius: 20px;
+  padding: 40px 48px;
+  max-width: 560px;
+  box-shadow: 0 16px 36px rgba(48, 38, 76, 0.12);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Mock Module Screen */
+.workos-mock-module-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #F5F3FA;
+  padding: 40px;
+  text-align: center;
+}

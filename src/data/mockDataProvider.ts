@@ -5,7 +5,10 @@ import {
   TimelineEvent, 
   PaginatedResult, 
   ObjectType, 
-  RecordFilter 
+  RecordFilter,
+  NotFoundError,
+  ForbiddenError,
+  NetworkError
 } from '../types';
 import { localDB } from './localDatabase';
 
@@ -23,31 +26,63 @@ export class MockDataProvider implements DataProvider {
   public useLargeCollectionStress: boolean;
 
   constructor(options: MockDataProviderOptions = {}) {
-    this.networkDelayMs = options.networkDelayMs ?? 180;
+    this.networkDelayMs = options.networkDelayMs ?? 120;
     this.simulateError = options.simulateError ?? false;
     this.simulateEmptyGroup = options.simulateEmptyGroup ?? false;
     this.useLargeCollectionStress = options.useLargeCollectionStress ?? false;
   }
 
-  private async delay(): Promise<void> {
+  private async delay(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
     if (this.networkDelayMs > 0) {
-      await new Promise(resolve => setTimeout(resolve, this.networkDelayMs));
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          resolve();
+        }, this.networkDelayMs);
+
+        if (signal) {
+          signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        }
+      });
     }
   }
 
   private checkError(): void {
     if (this.simulateError) {
-      throw new Error('Could not load this information');
+      throw new NetworkError('Could not load this information');
     }
   }
 
-  public async getObject(id: string, companyId: string): Promise<BusinessObject> {
-    await this.delay();
+  public async getObject(id: string, companyId: string, signal?: AbortSignal): Promise<BusinessObject> {
+    await this.delay(signal);
     this.checkError();
+
+    // Check special restricted record simulation
+    if (id === 'record_restricted') {
+      const baseRestricted = localDB.findById(id, companyId, this.useLargeCollectionStress);
+      if (!baseRestricted) {
+        throw new NotFoundError('This record is unavailable');
+      }
+      // Return safe, masked business object (no private fields per requirement 1.10)
+      return {
+        id: baseRestricted.id,
+        companyId: baseRestricted.companyId,
+        type: baseRestricted.type,
+        name: 'Restricted Record',
+        status: 'Restricted',
+        restricted: true,
+        description: 'This record is unavailable'
+      };
+    }
 
     const obj = localDB.findById(id, companyId, this.useLargeCollectionStress);
     if (!obj) {
-      throw new Error(`Record ${id} not found`);
+      throw new NotFoundError(`This record is unavailable`);
     }
 
     if (obj.restricted) {
@@ -58,36 +93,42 @@ export class MockDataProvider implements DataProvider {
         name: 'Restricted Record',
         status: 'Restricted',
         restricted: true,
-        description: 'You do not have permission to view the details of this record.'
+        description: 'This record is unavailable'
       };
     }
 
     return obj;
   }
 
-  public async getRelationships(id: string, companyId: string): Promise<RelationshipGroup[]> {
-    await this.delay();
+  public async getRelationships(id: string, companyId: string, signal?: AbortSignal): Promise<RelationshipGroup[]> {
+    await this.delay(signal);
     this.checkError();
 
-    if (this.simulateEmptyGroup) {
-      return [];
-    }
-
-    return localDB.getRelationshipsFor(id, companyId, this.useLargeCollectionStress);
+    return localDB.getRelationshipsFor(
+      id, 
+      companyId, 
+      this.useLargeCollectionStress, 
+      this.simulateEmptyGroup
+    );
   }
 
-  public async searchObjects(query: string, companyId: string): Promise<BusinessObject[]> {
-    await this.delay();
+  public async searchObjects(
+    query: string,
+    companyId: string,
+    signal?: AbortSignal,
+    connectedToId?: string
+  ): Promise<BusinessObject[]> {
+    await this.delay(signal);
     this.checkError();
 
-    return localDB.search(query, companyId);
+    return localDB.search(query, companyId, this.useLargeCollectionStress, connectedToId);
   }
 
-  public async getTimeline(id: string, companyId: string): Promise<TimelineEvent[]> {
-    await this.delay();
+  public async getTimeline(id: string, companyId: string, signal?: AbortSignal): Promise<TimelineEvent[]> {
+    await this.delay(signal);
     this.checkError();
 
-    const obj = await this.getObject(id, companyId);
+    const obj = await this.getObject(id, companyId, signal);
     return obj.activity || [];
   }
 
@@ -97,16 +138,17 @@ export class MockDataProvider implements DataProvider {
     companyId: string,
     page: number = 1,
     pageSize: number = 20,
-    filter?: RecordFilter
+    filter?: RecordFilter,
+    signal?: AbortSignal
   ): Promise<PaginatedResult<BusinessObject>> {
-    await this.delay();
+    await this.delay(signal);
     this.checkError();
 
     if (this.simulateEmptyGroup) {
       return {
         items: [],
         total: 0,
-        page,
+        page: 1,
         pageSize,
         hasMore: false
       };
@@ -121,5 +163,12 @@ export class MockDataProvider implements DataProvider {
       filter,
       this.useLargeCollectionStress
     );
+  }
+
+  /**
+   * Helper to resolve linked record dynamically (Requirement 1.4)
+   */
+  public async getLinkedRecordOfType(id: string, targetType: ObjectType): Promise<BusinessObject | null> {
+    return localDB.findConnectedRecordOfType(id, targetType, this.useLargeCollectionStress);
   }
 }

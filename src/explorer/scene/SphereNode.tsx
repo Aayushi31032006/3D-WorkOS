@@ -12,7 +12,7 @@ import {
   CreditCard, 
   FileCheck 
 } from 'lucide-react';
-import { ObjectType } from '../../types';
+import { ObjectType, ExplorerTheme } from '../../types';
 
 export interface SphereNodeProps {
   id: string;
@@ -22,9 +22,10 @@ export interface SphereNodeProps {
   subtitle?: string;
   count?: number;
   position: [number, number, number];
-  color?: string;
+  theme?: ExplorerTheme;
   isSelected?: boolean;
-  onClick: (id: string, isCentral: boolean) => void;
+  isFocused?: boolean;
+  onClick: () => void;
 }
 
 export const SphereNode: React.FC<SphereNodeProps> = ({
@@ -35,8 +36,9 @@ export const SphereNode: React.FC<SphereNodeProps> = ({
   subtitle,
   count,
   position,
-  color,
+  theme,
   isSelected = false,
+  isFocused = false,
   onClick
 }) => {
   const [hovered, setHovered] = useState(false);
@@ -45,7 +47,8 @@ export const SphereNode: React.FC<SphereNodeProps> = ({
   // Subtle floating motion using Three.js useFrame
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const prefersReducedMotion = typeof window !== 'undefined' && 
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReducedMotion) return;
 
     const time = clock.getElapsedTime();
@@ -57,36 +60,43 @@ export const SphereNode: React.FC<SphereNodeProps> = ({
     }
   });
 
-  // Exact colors from brief: Central #B897E3, Related #D3BFEF, Selection #7046B2
-  const sphereColor = color || (isCentral ? '#B897E3' : '#D3BFEF');
+  // Brief colors: central #B897E3, related #D3BFEF, selection #7046B2, label #30264C
+  const centralColor = theme?.central || theme?.centralSphereColor || '#B897E3';
+  const relatedColor = theme?.related || theme?.relatedSphereColor || '#D3BFEF';
+  const selectionColor = theme?.selection || theme?.selectionColor || '#7046B2';
+  const labelColor = theme?.label || theme?.labelColor || '#30264C';
+
+  const sphereColor = isCentral ? centralColor : relatedColor;
   const radius = isCentral ? 1.35 : 0.72;
-  const currentScale = hovered ? 1.05 : 1.0;
+  const currentScale = hovered || isFocused ? 1.06 : 1.0;
 
   // Icons matching object types in Figure 1
   const getIcon = () => {
     const size = isCentral ? 22 : 18;
-    const stroke = '#30264C';
     switch (type) {
       case 'customer':
-        return <Building2 size={size} color={stroke} />;
+        return <Building2 size={size} color={labelColor} />;
       case 'invoice':
-        return <FileText size={size} color={stroke} />;
+        return <FileText size={size} color={labelColor} />;
       case 'project':
-        return <FolderKanban size={size} color={stroke} />;
+        return <FolderKanban size={size} color={labelColor} />;
       case 'task':
-        return <CheckSquare size={size} color={stroke} />;
+        return <CheckSquare size={size} color={labelColor} />;
       case 'person':
-        return <Users size={size} color={stroke} />;
+        return <Users size={size} color={labelColor} />;
       case 'product':
-        return <Box size={size} color={stroke} />;
+        return <Box size={size} color={labelColor} />;
       case 'payment':
-        return <CreditCard size={size} color={stroke} />;
+        return <CreditCard size={size} color={labelColor} />;
       case 'contract':
-        return <FileCheck size={size} color={stroke} />;
+        return <FileCheck size={size} color={labelColor} />;
       default:
-        return <FileText size={size} color={stroke} />;
+        return <FileText size={size} color={labelColor} />;
     }
   };
+
+  // Truncate long names for peripheral pills with ellipsis (Requirement 2.4)
+  const displayTitle = title.length > 20 ? `${title.slice(0, 18)}…` : title;
 
   return (
     <group 
@@ -94,13 +104,13 @@ export const SphereNode: React.FC<SphereNodeProps> = ({
       position={position}
       scale={[currentScale, currentScale, currentScale]}
     >
-      {/* 3D Sphere Mesh with smooth material */}
+      {/* 3D Sphere Mesh with physical shader */}
       <mesh
         castShadow
         receiveShadow
         onClick={(e) => {
           e.stopPropagation();
-          onClick(id, isCentral);
+          onClick();
         }}
         onPointerOver={(e) => {
           e.stopPropagation();
@@ -125,21 +135,21 @@ export const SphereNode: React.FC<SphereNodeProps> = ({
       </mesh>
 
       {/* Selection / Hover Indicator Ring */}
-      {(isSelected || hovered) && (
+      {(isSelected || hovered || isFocused) && (
         <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -radius - 0.05, 0]}>
           <ringGeometry args={[radius + 0.12, radius + 0.22, 64]} />
           <meshBasicMaterial 
-            color="#7046B2" 
+            color={selectionColor} 
             transparent 
-            opacity={isSelected ? 0.85 : 0.45} 
+            opacity={isSelected || isFocused ? 0.9 : 0.45} 
             side={THREE.DoubleSide} 
           />
         </mesh>
       )}
 
-      {/* Embedded High-Fidelity Labels (HTML Overlay billboarded upright) */}
+      {/* Upright Billboarding HTML Overlay with contrast halo */}
       <Html
-        position={isCentral ? [0, 0, 0] : [0, 0, 0]}
+        position={[0, 0, 0]}
         center
         distanceFactor={14}
         style={{ pointerEvents: 'none' }}
@@ -150,17 +160,17 @@ export const SphereNode: React.FC<SphereNodeProps> = ({
           alignItems: 'center',
           justifyContent: 'center',
           textAlign: 'center',
-          color: '#30264C',
+          color: labelColor,
           userSelect: 'none',
           fontFamily: 'Inter, sans-serif'
         }}>
           {isCentral ? (
-            /* Central Sphere Label (Figure 1: Type on top, Name below) */
+            /* Central Sphere Label: Type on top, Name below */
             <div style={{
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              textShadow: '0 1px 2px rgba(255,255,255,0.8)'
+              textShadow: '0 0 6px rgba(255, 255, 255, 0.9), 0 1px 2px rgba(255, 255, 255, 0.8)'
             }}>
               <span style={{
                 fontSize: '10px',
@@ -168,7 +178,7 @@ export const SphereNode: React.FC<SphereNodeProps> = ({
                 letterSpacing: '0.08em',
                 textTransform: 'uppercase',
                 opacity: 0.85,
-                color: '#30264C',
+                color: labelColor,
                 marginBottom: '2px'
               }}>
                 {subtitle || type}
@@ -176,7 +186,7 @@ export const SphereNode: React.FC<SphereNodeProps> = ({
               <span style={{
                 fontSize: '17px',
                 fontWeight: 800,
-                color: '#30264C',
+                color: labelColor,
                 whiteSpace: 'nowrap',
                 lineHeight: 1.2
               }}>
@@ -197,30 +207,35 @@ export const SphereNode: React.FC<SphereNodeProps> = ({
         </div>
       </Html>
 
-      {/* Label Under Related Sphere (High-Fidelity Enterprise Pill matching Figure 1) */}
+      {/* Label Under Related Sphere (Pill with soft halo and count) */}
       {!isCentral && (
         <Html
-          position={[0, -radius - 0.42, 0]}
+          position={[0, -radius - 0.44, 0]}
           center
           distanceFactor={13}
           style={{ pointerEvents: 'none' }}
         >
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '2px',
-            padding: '4px 12px',
-            background: 'rgba(255, 255, 255, 0.88)',
-            backdropFilter: 'blur(8px)',
-            borderRadius: '9999px',
-            border: '1px solid rgba(112, 70, 178, 0.16)',
-            boxShadow: '0 4px 12px rgba(48, 38, 76, 0.08)',
-            whiteSpace: 'nowrap',
-            textAlign: 'center',
-            userSelect: 'none',
-            fontFamily: 'Inter, sans-serif'
-          }}>
+          <div 
+            title={title}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '2px',
+              padding: '4px 12px',
+              background: 'rgba(255, 255, 255, 0.92)',
+              backdropFilter: 'blur(8px)',
+              borderRadius: '9999px',
+              border: `1px solid ${isSelected || isFocused ? selectionColor : 'rgba(112, 70, 178, 0.16)'}`,
+              boxShadow: isSelected || isFocused 
+                ? `0 0 0 2px ${selectionColor}, 0 4px 12px rgba(48, 38, 76, 0.12)` 
+                : '0 4px 12px rgba(48, 38, 76, 0.08)',
+              whiteSpace: 'nowrap',
+              textAlign: 'center',
+              userSelect: 'none',
+              fontFamily: 'Inter, sans-serif'
+            }}
+          >
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -229,17 +244,17 @@ export const SphereNode: React.FC<SphereNodeProps> = ({
               <span style={{
                 fontSize: '13px',
                 fontWeight: 700,
-                color: '#30264C',
+                color: labelColor,
                 letterSpacing: '-0.01em'
               }}>
-                {title}
+                {displayTitle}
               </span>
               {typeof count === 'number' && (
                 <span style={{
                   fontSize: '11px',
                   fontWeight: 800,
-                  color: 'var(--wos-selection)',
-                  background: 'var(--wos-selection-light)',
+                  color: selectionColor,
+                  background: 'rgba(112, 70, 178, 0.08)',
                   padding: '1px 6px',
                   borderRadius: '9999px'
                 }}>

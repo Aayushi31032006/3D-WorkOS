@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { CameraState } from '../../types';
 
 export interface CameraControlsProps {
+  initialCamera?: CameraState;
   cameraStateTrigger?: {
     action: 'zoomIn' | 'zoomOut' | 'reset' | 'restore';
     targetState?: CameraState;
@@ -18,12 +19,30 @@ const DEFAULT_CAMERA_POS: [number, number, number] = [0, 8.5, 11.5];
 const DEFAULT_TARGET: [number, number, number] = [0, 0, 0];
 
 export const CameraController: React.FC<CameraControlsProps> = ({
+  initialCamera,
   cameraStateTrigger,
   onCameraChange,
   transitionDurationMs = 400
 }) => {
   const { camera } = useThree();
   const controlsRef = useRef<any>(null);
+  const isInitializedRef = useRef(false);
+
+  // Apply initialCamera immediately upon controls mount (Requirement 1.8)
+  useEffect(() => {
+    if (controlsRef.current && !isInitializedRef.current) {
+      isInitializedRef.current = true;
+      if (initialCamera) {
+        camera.position.set(...initialCamera.position);
+        controlsRef.current.target.set(...initialCamera.target);
+        if (initialCamera.zoom) {
+          camera.zoom = initialCamera.zoom;
+        }
+        controlsRef.current.update();
+        camera.updateProjectionMatrix();
+      }
+    }
+  }, [initialCamera, camera]);
 
   // Animation interpolation state
   const animRef = useRef<{
@@ -53,7 +72,8 @@ export const CameraController: React.FC<CameraControlsProps> = ({
     const currentTarget = controls.target.clone();
 
     // Check prefers-reduced-motion
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const prefersReducedMotion = typeof window !== 'undefined' && 
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const effectiveDuration = prefersReducedMotion ? 50 : transitionDurationMs;
 
     let targetPos = currentPos.clone();
@@ -93,7 +113,7 @@ export const CameraController: React.FC<CameraControlsProps> = ({
     const elapsed = now - anim.startTime;
     const progress = Math.min(1, elapsed / anim.duration);
 
-    // Cubic ease out: 1 - pow(1 - x, 3)
+    // Cubic ease out: 1 - (1 - progress)^3
     const ease = 1 - Math.pow(1 - progress, 3);
 
     camera.position.lerpVectors(anim.startPos, anim.endPos, ease);
@@ -120,7 +140,7 @@ export const CameraController: React.FC<CameraControlsProps> = ({
       minDistance={4}
       maxDistance={22}
       maxPolarAngle={Math.PI / 2.05} // don't go below floor
-      target={DEFAULT_TARGET}
+      target={initialCamera ? initialCamera.target : DEFAULT_TARGET}
       onEnd={() => {
         if (onCameraChange && controlsRef.current) {
           onCameraChange({

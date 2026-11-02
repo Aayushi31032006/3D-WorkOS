@@ -1,172 +1,294 @@
-import { BusinessObject, ObjectType, RelationshipGroup, RecordFilter, PaginatedResult } from '../types';
-import { SAMPLE_OBJECTS, RELATIONSHIPS, generateLargeInvoiceSet } from './sampleData';
+import { 
+  BusinessObject, 
+  ObjectType, 
+  RelationshipGroup, 
+  RecordFilter, 
+  PaginatedResult 
+} from '../types';
+import { 
+  BASE_OBJECTS, 
+  BASE_RELATIONSHIPS, 
+  generate1000InvoicesDataset 
+} from './sampleData';
 
-const DB_STORAGE_KEY = 'workos_object_space_db_v1';
+const EXPECTED_RELATIONSHIP_TYPES: Record<ObjectType, ObjectType[]> = {
+  customer: ['invoice', 'project', 'person', 'task', 'product', 'contract', 'payment'],
+  invoice: ['customer', 'project', 'payment', 'task'],
+  project: ['customer', 'invoice', 'task', 'person'],
+  task: ['project', 'person'],
+  person: ['customer', 'project', 'task'],
+  product: ['customer', 'project'],
+  payment: ['invoice'],
+  contract: ['customer']
+};
 
-export interface DatabaseSchema {
-  version: number;
-  lastUpdated: string;
-  objects: Record<string, BusinessObject>;
-  relationships: Array<{ fromId: string; toId: string; relationshipName: string }>;
-}
+export const LABEL_MAP: Record<ObjectType, string> = {
+  customer: 'Customer',
+  invoice: 'Invoices',
+  project: 'Projects',
+  task: 'Tasks',
+  person: 'Contacts',
+  product: 'Products',
+  payment: 'Payment',
+  contract: 'Contracts'
+};
 
 /**
  * LocalDatabase
- * Client-side persistent relational database engine.
- * Stores business objects and normalized relationship links in persistent browser storage.
+ * Pure in-memory relational graph database with O(1) Map-based indexes.
+ * Supports bi-directional relationship inference, dynamic derived summary fields,
+ * and stable 1,000-record dataset indexing on demand.
  */
 export class LocalDatabase {
-  private schema: DatabaseSchema;
-  private largeInvoicesCache: BusinessObject[] | null = null;
+  // Base Dataset Indexes
+  private baseObjects = new Map<string, BusinessObject>();
+  private baseCompanyIndex = new Map<string, string[]>();
+  private baseAdjacency = new Map<string, Set<string>>();
+
+  // 1K Records Dataset Indexes
+  private largeObjects = new Map<string, BusinessObject>();
+  private largeCompanyIndex = new Map<string, string[]>();
+  private largeAdjacency = new Map<string, Set<string>>();
+  private isLargeIndexed = false;
 
   constructor() {
-    this.schema = this.loadOrSeed();
+    this.indexBaseData();
   }
 
-  private loadOrSeed(): DatabaseSchema {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        const raw = window.localStorage.getItem(DB_STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && parsed.version === 1 && parsed.objects) {
-            return parsed;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('LocalStorage unavailable, using in-memory store', e);
+  private indexBaseData(): void {
+    // 1. Index objects
+    for (const [id, obj] of Object.entries(BASE_OBJECTS)) {
+      this.baseObjects.set(id, { ...obj });
+      const companyList = this.baseCompanyIndex.get(obj.companyId) || [];
+      companyList.push(id);
+      this.baseCompanyIndex.set(obj.companyId, companyList);
     }
 
-    // Seed default dataset
-    const initialSchema: DatabaseSchema = {
-      version: 1,
-      lastUpdated: new Date().toISOString(),
-      objects: { ...SAMPLE_OBJECTS },
-      relationships: [...RELATIONSHIPS]
-    };
-
-    this.save(initialSchema);
-    return initialSchema;
-  }
-
-  private save(schema: DatabaseSchema): void {
-    this.schema = schema;
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(schema));
-      }
-    } catch (e) {
-      console.warn('Could not persist to LocalStorage', e);
+    // 2. Index bi-directional adjacency
+    for (const { fromId, toId } of BASE_RELATIONSHIPS) {
+      this.addAdjacencyLink(this.baseAdjacency, fromId, toId);
     }
   }
 
-  public reset(): void {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      window.localStorage.removeItem(DB_STORAGE_KEY);
-    }
-    this.schema = {
-      version: 1,
-      lastUpdated: new Date().toISOString(),
-      objects: { ...SAMPLE_OBJECTS },
-      relationships: [...RELATIONSHIPS]
-    };
-    this.save(this.schema);
-    this.largeInvoicesCache = null;
+  private addAdjacencyLink(adjMap: Map<string, Set<string>>, a: string, b: string): void {
+    if (!adjMap.has(a)) adjMap.set(a, new Set());
+    if (!adjMap.has(b)) adjMap.set(b, new Set());
+    adjMap.get(a)!.add(b);
+    adjMap.get(b)!.add(a);
   }
 
-  public getStats() {
-    const objectList = Object.values(this.schema.objects);
+  private ensureLargeIndexed(): void {
+    if (this.isLargeIndexed) return;
+
+    // Clone base indexes into large indexes
+    for (const [id, obj] of this.baseObjects.entries()) {
+      this.largeObjects.set(id, { ...obj });
+    }
+    for (const [compId, list] of this.baseCompanyIndex.entries()) {
+      this.largeCompanyIndex.set(compId, [...list]);
+    }
+    for (const [id, set] of this.baseAdjacency.entries()) {
+      this.largeAdjacency.set(id, new Set(set));
+    }
+
+    // Generate enough extra invoices to make the combined collection 1,000 records.
+    const { objects, relationships } = generate1000InvoicesDataset();
+    for (const [id, obj] of Object.entries(objects)) {
+      this.largeObjects.set(id, { ...obj });
+      const companyList = this.largeCompanyIndex.get(obj.companyId) || [];
+      companyList.push(id);
+      this.largeCompanyIndex.set(obj.companyId, companyList);
+    }
+    for (const { fromId, toId } of relationships) {
+      this.addAdjacencyLink(this.largeAdjacency, fromId, toId);
+    }
+
+    this.isLargeIndexed = true;
+  }
+
+  private getStore(useLarge: boolean = false) {
+    if (useLarge) {
+      this.ensureLargeIndexed();
+      return {
+        objects: this.largeObjects,
+        companyIndex: this.largeCompanyIndex,
+        adjacency: this.largeAdjacency
+      };
+    }
     return {
-      totalObjects: objectList.length,
-      totalRelationships: this.schema.relationships.length,
-      companies: Array.from(new Set(objectList.map(o => o.companyId))),
-      types: Array.from(new Set(objectList.map(o => o.type))),
-      storageEngine: 'HTML5 Web Storage (Persistent)'
+      objects: this.baseObjects,
+      companyIndex: this.baseCompanyIndex,
+      adjacency: this.baseAdjacency
     };
   }
 
-  public getAllObjects(): BusinessObject[] {
-    return Object.values(this.schema.objects);
-  }
+  /**
+   * Derive summary fields dynamically from graph connections (Requirement 1.3:
+   * never duplicate relationships as hard-coded text).
+   */
+  private enrichObject(rawObj: BusinessObject, useLarge: boolean): BusinessObject {
+    const { objects, adjacency } = this.getStore(useLarge);
+    const neighbors = Array.from(adjacency.get(rawObj.id) || [])
+      .map(id => objects.get(id))
+      .filter((n): n is BusinessObject => !!n);
 
-  public findById(id: string, companyId: string, useLargeStress: boolean = false): BusinessObject | null {
-    if (useLargeStress && id.startsWith('inv_stress_')) {
-      return this.getLargeInvoices().find(o => o.id === id) || null;
+    const summary: Record<string, string | number> = { ...(rawObj.summaryFields || {}) };
+
+    if (rawObj.type === 'customer') {
+      const invoices = neighbors.filter(n => n.type === 'invoice');
+      const projects = neighbors.filter(n => n.type === 'project');
+      const contacts = neighbors.filter(n => n.type === 'person');
+      summary['Active Invoices'] = invoices.length;
+      summary['Active Projects'] = projects.length;
+      summary['Primary Contacts'] = contacts.length;
+      if (contacts[0]) summary['Primary Contact'] = contacts[0].name;
+    } else if (rawObj.type === 'invoice') {
+      const cust = neighbors.find(n => n.type === 'customer');
+      const proj = neighbors.find(n => n.type === 'project');
+      const pay = neighbors.find(n => n.type === 'payment');
+      if (cust) summary['Customer'] = cust.name;
+      if (proj) summary['Linked project'] = proj.name;
+      if (pay) summary['Payment Reference'] = pay.name;
+      summary['Payment Terms'] = 'Net 30';
+    } else if (rawObj.type === 'project') {
+      const cust = neighbors.find(n => n.type === 'customer');
+      const tasks = neighbors.filter(n => n.type === 'task');
+      const contacts = neighbors.filter(n => n.type === 'person');
+      if (cust) summary['Customer'] = cust.name;
+      summary['Linked Tasks'] = tasks.length;
+      if (contacts[0]) summary['Project Lead'] = contacts[0].name;
+    } else if (rawObj.type === 'task') {
+      const proj = neighbors.find(n => n.type === 'project');
+      const assignee = neighbors.find(n => n.type === 'person');
+      if (proj) summary['Parent project'] = proj.name;
+      if (assignee) summary['Assignee'] = assignee.name;
+    } else if (rawObj.type === 'person') {
+      const cust = neighbors.find(n => n.type === 'customer');
+      const projs = neighbors.filter(n => n.type === 'project');
+      if (cust) summary['Organization'] = cust.name;
+      if (projs.length > 0) summary['Assigned Projects'] = projs.map(p => p.name).join(', ');
+    } else if (rawObj.type === 'product') {
+      const cust = neighbors.find(n => n.type === 'customer');
+      const projs = neighbors.filter(n => n.type === 'project');
+      if (cust) summary['Customer'] = cust.name;
+      if (projs.length > 0) summary['Deployed In'] = projs.map(p => p.name).join(', ');
+    } else if (rawObj.type === 'payment') {
+      const invs = neighbors.filter(n => n.type === 'invoice');
+      if (invs.length > 0) summary['Invoices'] = invs.map(i => i.name).join(', ');
+    } else if (rawObj.type === 'contract') {
+      const cust = neighbors.find(n => n.type === 'customer');
+      if (cust) summary['Counterparty'] = cust.name;
     }
 
-    const obj = this.schema.objects[id];
-    if (!obj) return null;
-    if (obj.companyId !== companyId) return null;
-    return { ...obj };
+    return {
+      ...rawObj,
+      summaryFields: summary
+    };
   }
 
-  public getRelationshipsFor(id: string, companyId: string, useLargeStress: boolean = false): RelationshipGroup[] {
-    const connected = this.schema.relationships
-      .filter(rel => rel.fromId === id)
-      .map(rel => ({
-        targetId: rel.toId,
-        targetObj: this.schema.objects[rel.toId]
-      }))
-      .filter(item => item.targetObj && item.targetObj.companyId === companyId);
+  public findById(id: string, companyId: string, useLarge: boolean = false): BusinessObject | null {
+    const { objects } = this.getStore(useLarge);
+    const obj = objects.get(id);
+    if (!obj || obj.companyId !== companyId) {
+      return null;
+    }
+    return this.enrichObject(obj, useLarge);
+  }
 
+  public getRelationshipsFor(
+    id: string, 
+    companyId: string, 
+    useLarge: boolean = false,
+    forceEmpty: boolean = false
+  ): RelationshipGroup[] {
+    const { objects, adjacency } = this.getStore(useLarge);
+    const current = objects.get(id);
+    if (!current) return [];
+
+    const expectedTypes = EXPECTED_RELATIONSHIP_TYPES[current.type] || [];
+
+    if (forceEmpty) {
+      return expectedTypes.map(type => ({
+        type,
+        label: LABEL_MAP[type] || type,
+        count: 0,
+        recordIds: []
+      }));
+    }
+
+    const neighborIds = Array.from(adjacency.get(id) || []);
     const groupMap = new Map<ObjectType, string[]>();
 
-    connected.forEach(({ targetId, targetObj }) => {
-      const type = targetObj.type;
-      const list = groupMap.get(type) || [];
-      list.push(targetId);
-      groupMap.set(type, list);
-    });
-
-    const labelMap: Record<ObjectType, string> = {
-      customer: 'Customer',
-      invoice: 'Invoices',
-      project: 'Projects',
-      task: 'Tasks',
-      person: 'Contacts',
-      product: 'Products',
-      payment: 'Payment',
-      contract: 'Contracts'
-    };
-
-    const groups: RelationshipGroup[] = [];
-    groupMap.forEach((ids, type) => {
-      let count = ids.length;
-      if (type === 'invoice' && useLargeStress && id === 'cust_globex') {
-        count = 1000;
+    for (const nId of neighborIds) {
+      const neighbor = objects.get(nId);
+      if (neighbor && neighbor.companyId === companyId) {
+        const list = groupMap.get(neighbor.type) || [];
+        list.push(nId);
+        groupMap.set(neighbor.type, list);
       }
+    }
+
+    // Build relationship groups for all expected types (with count 0 if none)
+    // plus any other connected types
+    const seenTypes = new Set<ObjectType>();
+    const groups: RelationshipGroup[] = [];
+
+    for (const type of expectedTypes) {
+      seenTypes.add(type);
+      const ids = groupMap.get(type) || [];
       groups.push({
         type,
-        label: labelMap[type] || type,
-        count,
+        label: LABEL_MAP[type] || type,
+        count: ids.length,
         recordIds: ids
       });
-    });
+    }
+
+    // Add any connected types not in default expected list
+    for (const [type, ids] of groupMap.entries()) {
+      if (!seenTypes.has(type)) {
+        groups.push({
+          type,
+          label: LABEL_MAP[type] || type,
+          count: ids.length,
+          recordIds: ids
+        });
+      }
+    }
 
     return groups;
   }
 
-  public search(query: string, companyId: string): BusinessObject[] {
+  public search(
+    query: string,
+    companyId: string,
+    useLarge: boolean = false,
+    connectedToId?: string
+  ): BusinessObject[] {
     if (!query || !query.trim()) return [];
     const q = query.toLowerCase().trim();
+    const { objects, adjacency } = this.getStore(useLarge);
 
-    return Object.values(this.schema.objects).filter(obj => {
-      if (obj.companyId !== companyId) return false;
-      return (
+    const results: BusinessObject[] = [];
+    for (const obj of objects.values()) {
+      if (obj.companyId !== companyId) continue;
+
+      // Requirement 2.15: Scoped to records that have at least one connection
+      const neighborCount = adjacency.get(obj.id)?.size || 0;
+      if (neighborCount === 0) continue;
+      if (connectedToId && !adjacency.get(connectedToId)?.has(obj.id)) continue;
+
+      if (
         obj.name.toLowerCase().includes(q) ||
         obj.code?.toLowerCase().includes(q) ||
         obj.type.toLowerCase().includes(q) ||
         obj.owner?.toLowerCase().includes(q)
-      );
-    }).slice(0, 12);
-  }
-
-  private getLargeInvoices(): BusinessObject[] {
-    if (!this.largeInvoicesCache) {
-      this.largeInvoicesCache = generateLargeInvoiceSet(1000);
+      ) {
+        results.push(this.enrichObject(obj, useLarge));
+        if (results.length >= 15) break;
+      }
     }
-    return this.largeInvoicesCache;
+    return results;
   }
 
   public queryCollection(
@@ -176,23 +298,23 @@ export class LocalDatabase {
     page: number = 1,
     pageSize: number = 20,
     filter?: RecordFilter,
-    useLargeStress: boolean = false
+    useLarge: boolean = false
   ): PaginatedResult<BusinessObject> {
+    const { objects, adjacency } = this.getStore(useLarge);
+    const neighborIds = Array.from(adjacency.get(parentId) || []);
+
     let records: BusinessObject[] = [];
-
-    if (useLargeStress && groupType === 'invoice' && parentId === 'cust_globex') {
-      records = this.getLargeInvoices();
-    } else {
-      const targetIds = this.schema.relationships
-        .filter(rel => rel.fromId === parentId)
-        .map(rel => rel.toId);
-
-      records = targetIds
-        .map(id => this.schema.objects[id])
-        .filter((obj): obj is BusinessObject => !!obj && obj.type === groupType && obj.companyId === companyId);
+    for (const nId of neighborIds) {
+      const n = objects.get(nId);
+      if (n && n.type === groupType && n.companyId === companyId) {
+        records.push(this.enrichObject(n, useLarge));
+      }
     }
 
-    // Apply Filters
+    // Sort: Ensure canonical invoices (0041-0047) or natural numerical order
+    records.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
+
+    // Apply Filter (query & status)
     if (filter) {
       if (filter.query && filter.query.trim()) {
         const q = filter.query.toLowerCase().trim();
@@ -203,7 +325,8 @@ export class LocalDatabase {
         );
       }
       if (filter.status && filter.status !== 'All') {
-        records = records.filter(r => r.status?.toLowerCase() === filter.status?.toLowerCase());
+        const statusMatch = filter.status.toLowerCase();
+        records = records.filter(r => r.status?.toLowerCase() === statusMatch);
       }
     }
 
@@ -219,6 +342,22 @@ export class LocalDatabase {
       pageSize,
       hasMore
     };
+  }
+
+  /**
+   * Find a connected record of a specific type for navigation resolution
+   * (e.g. resolve linked project for INV-0042 -> proj_alpha, INV-0043 -> proj_beta)
+   */
+  public findConnectedRecordOfType(id: string, targetType: ObjectType, useLarge: boolean = false): BusinessObject | null {
+    const { objects, adjacency } = this.getStore(useLarge);
+    const neighborIds = Array.from(adjacency.get(id) || []);
+    for (const nId of neighborIds) {
+      const n = objects.get(nId);
+      if (n && n.type === targetType) {
+        return this.enrichObject(n, useLarge);
+      }
+    }
+    return null;
   }
 }
 

@@ -1,13 +1,15 @@
 import React from 'react';
 import { 
   BusinessObject, 
-  RelationshipGroup 
+  RelationshipGroup,
+  DataProvider
 } from '../../types';
 import { ArrowRight, ExternalLink } from 'lucide-react';
 
 export interface ListViewProps {
   currentObject: BusinessObject;
   relationshipGroups: RelationshipGroup[];
+  dataProvider: DataProvider;
   onSelectCentral: () => void;
   onSelectGroup: (group: RelationshipGroup) => void;
   onNavigateToObject?: (id: string) => void;
@@ -17,11 +19,25 @@ export interface ListViewProps {
 export const ListView: React.FC<ListViewProps> = ({
   currentObject,
   relationshipGroups,
+  dataProvider,
   onSelectCentral,
   onSelectGroup,
   onNavigateToObject,
   onOpenExecution
 }) => {
+  // Handle group click or Enter key adhering to Single-Record Group Rule (Requirement 1.5)
+  const handleGroupInteraction = (group: RelationshipGroup) => {
+    if (group.count === 1 && group.recordIds && group.recordIds[0]) {
+      // Exactly 1 record in group: navigate straight to that record
+      if (onNavigateToObject) {
+        onNavigateToObject(group.recordIds[0]);
+      }
+    } else {
+      // 0 or 2+ records: open collection panel
+      onSelectGroup(group);
+    }
+  };
+
   return (
     <div 
       className="wos-list-view-container"
@@ -35,7 +51,9 @@ export const ListView: React.FC<ListViewProps> = ({
         background: 'linear-gradient(135deg, #FAF7FD 0%, #FFFFFF 100%)',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between'
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '16px'
       }}>
         <div>
           <div style={{
@@ -51,7 +69,7 @@ export const ListView: React.FC<ListViewProps> = ({
           <h1 style={{ margin: 0, fontSize: '22px', fontWeight: 700, color: 'var(--wos-label)' }}>
             {currentObject.name}
           </h1>
-          <div style={{ display: 'flex', gap: '16px', marginTop: '6px', fontSize: '13px', color: 'var(--wos-label-muted)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', marginTop: '6px', fontSize: '13px', color: 'var(--wos-label-muted)' }}>
             {currentObject.status && <span>Status: <strong>{currentObject.status}</strong></span>}
             {currentObject.amount && <span>Amount: <strong style={{ color: 'var(--wos-selection)' }}>{currentObject.amount}</strong></span>}
             {currentObject.dueDate && <span>Due Date: <strong>{currentObject.dueDate}</strong></span>}
@@ -59,19 +77,21 @@ export const ListView: React.FC<ListViewProps> = ({
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <button
             className="wos-retry-btn"
             onClick={onSelectCentral}
-            aria-label="Open record details panel"
+            aria-label="View details"
           >
             View Details
           </button>
-          {(currentObject.type === 'project' || currentObject.type === 'task' || currentObject.type === 'invoice') && onOpenExecution && (
+          {(currentObject.type === 'project' || currentObject.type === 'task') && onOpenExecution && (
             <button
               className="wos-primary-action-btn"
               style={{ margin: 0, padding: '8px 16px', width: 'auto' }}
-              onClick={() => onOpenExecution(currentObject.type === 'invoice' ? 'proj_alpha' : currentObject.id)}
+              onClick={() => {
+                onOpenExecution(currentObject.id);
+              }}
             >
               <span>{currentObject.type === 'task' ? 'Open in WorkOS' : 'Open project in WorkOS'}</span>
               <ExternalLink size={14} />
@@ -87,7 +107,7 @@ export const ListView: React.FC<ListViewProps> = ({
             <tr>
               <th scope="col">Relationship Group</th>
               <th scope="col">Type</th>
-              <th scope="col">Connected Records Count</th>
+              <th scope="col">Connected Records</th>
               <th scope="col" style={{ textAlign: 'right' }}>Action</th>
             </tr>
           </thead>
@@ -99,60 +119,58 @@ export const ListView: React.FC<ListViewProps> = ({
                 </td>
               </tr>
             ) : (
-              relationshipGroups.map((group) => (
-                <tr 
-                  key={group.type}
-                  onClick={() => onSelectGroup(group)}
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') onSelectGroup(group);
-                  }}
-                  aria-label={`Open ${group.label} group containing ${group.count} records`}
-                >
-                  <td style={{ fontWeight: 600, color: 'var(--wos-label)' }}>
-                    {group.label}
-                  </td>
-                  <td>
-                    <span className="wos-search-type-badge">
-                      {group.type}
-                    </span>
-                  </td>
-                  <td>
-                    <span style={{
-                      fontWeight: 700,
-                      color: 'var(--wos-selection)',
-                      background: 'var(--wos-selection-light)',
-                      padding: '2px 8px',
-                      borderRadius: 'var(--wos-radius-full)',
-                      fontSize: '12px'
-                    }}>
-                      {group.count} records
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectGroup(group);
-                      }}
-                      style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        background: 'none',
-                        border: 'none',
+              relationshipGroups.map((group) => {
+                const isSingle = group.count === 1 && Boolean(group.recordIds?.[0]);
+                return (
+                  <tr 
+                    key={group.type + '_' + group.label}
+                    onClick={() => handleGroupInteraction(group)}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleGroupInteraction(group);
+                      }
+                    }}
+                    aria-label={`${group.label} group containing ${group.count} records. ${isSingle ? 'Press Enter to open record directly.' : 'Press Enter to open collection panel.'}`}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <td style={{ fontWeight: 600, color: 'var(--wos-label)' }}>
+                      {group.label}
+                    </td>
+                    <td>
+                      <span className="wos-search-type-badge">
+                        {group.type}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{
+                        fontWeight: 700,
                         color: 'var(--wos-selection)',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        padding: '4px 8px'
-                      }}
-                    >
-                      <span>Explore</span>
-                      <ArrowRight size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))
+                        background: 'var(--wos-selection-light)',
+                        padding: '2px 8px',
+                        borderRadius: 'var(--wos-radius-full)',
+                        fontSize: '12px'
+                      }}>
+                        {group.count} {group.count === 1 ? 'record' : 'records'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button
+                        className="wos-table-action-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleGroupInteraction(group);
+                        }}
+                        aria-label={isSingle ? `Navigate to ${group.label}` : `Explore ${group.label}`}
+                      >
+                        <span>{isSingle ? 'Open Record' : 'Explore'}</span>
+                        <ArrowRight size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

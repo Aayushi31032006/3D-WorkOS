@@ -5,7 +5,10 @@ import {
   RelationshipGroup, 
   BreadcrumbItem, 
   CameraState, 
-  ReturnContext 
+  ReturnContext,
+  CollectionFilterState,
+  NotFoundError,
+  ForbiddenError
 } from '../types';
 import { Scene } from './scene/Scene';
 import { ListView } from './views/ListView';
@@ -15,7 +18,18 @@ import { Breadcrumb } from './components/Breadcrumb';
 import { SearchBar } from './components/SearchBar';
 import { ViewSwitch } from './components/ViewSwitch';
 import { CameraControlsOverlay } from './components/CameraControlsOverlay';
+import { ShieldAlert, Loader2 } from 'lucide-react';
 import './styles/explorer.css';
+
+const detectWebGL = (): boolean => {
+  if (typeof document === 'undefined') return false;
+  try {
+    const canvas = document.createElement('canvas');
+    return Boolean(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
+  } catch {
+    return false;
+  }
+};
 
 export const ObjectSpaceExplorer: React.FC<ObjectSpaceExplorerProps> = ({
   startingId,
@@ -24,6 +38,7 @@ export const ObjectSpaceExplorer: React.FC<ObjectSpaceExplorerProps> = ({
   onOpenExecution,
   initialReturnContext,
   theme,
+  onNavigate,
   onError
 }) => {
   // Navigation & Active Object State
@@ -34,20 +49,22 @@ export const ObjectSpaceExplorer: React.FC<ObjectSpaceExplorerProps> = ({
   const [relationshipGroups, setRelationshipGroups] = useState<RelationshipGroup[]>([]);
   
   // Breadcrumb Trail State
-  const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>(
-    initialReturnContext?.breadcrumbTrail || []
+  const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([]);
+
+  // Bounded History stacks for Back and Forward navigation (Requirements 1.6 & 2.9)
+  const [historyIds, setHistoryIds] = useState<string[]>(
+    initialReturnContext?.historyIds || []
   );
+  const [forwardIds, setForwardIds] = useState<string[]>([]);
 
-  // History stack for back navigation
-  const [historyStack, setHistoryStack] = useState<Array<{
-    objectId: string;
-    breadcrumbs: BreadcrumbItem[];
-    camera?: CameraState;
-  }>>([]);
-
-  // Active temporary panel: 'none' | 'details' | 'collection'
-  const [activePanel, setActivePanel] = useState<'none' | 'details' | 'collection'>('none');
+  // Active temporary panel: 'none' | 'details' | 'collection' (Single panel rule)
+  const [activePanel, setActivePanel] = useState<'none' | 'details' | 'collection'>(
+    initialReturnContext?.openPanel || 'none'
+  );
   const [activeGroup, setActiveGroup] = useState<RelationshipGroup | null>(null);
+  const [collectionFilter, setCollectionFilter] = useState<CollectionFilterState | null>(
+    initialReturnContext?.collectionFilter || null
+  );
 
   // View Mode: '3D' | 'List'
   const [viewMode, setViewMode] = useState<'3D' | 'List'>(
@@ -62,42 +79,65 @@ export const ObjectSpaceExplorer: React.FC<ObjectSpaceExplorerProps> = ({
     timestamp: number;
   } | null>(null);
 
-  // Loading & Error States
+  // Loading & Typed Error States
   const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isNavigating, setIsNavigating] = useState<boolean>(false);
+  const [errorType, setErrorType] = useState<'none' | 'unavailable' | 'network'>('none');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Detect WebGL support for fallback
-  const [hasWebGL, setHasWebGL] = useState<boolean>(true);
+  // WebGL support and crash fallback (Requirement 2.7)
+  const [hasWebGL, setHasWebGL] = useState<boolean>(() => detectWebGL());
+  const [webGlFallbackMessage, setWebGlFallbackMessage] = useState<string | null>(
+    () => detectWebGL() ? null : '3D graphics unavailable. Showing accessible List view.'
+  );
+
+  // In-flight request cancellation reference (Requirement 2.1)
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const prevCompanyRef = useRef(companyContext);
+  const prevStartingIdRef = useRef(startingId);
+  const prevProviderRef = useRef(dataProvider);
 
   useEffect(() => {
-    try {
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-      if (!gl) {
-        setHasWebGL(false);
-        setViewMode('List');
-      }
-    } catch {
-      setHasWebGL(false);
-      setViewMode('List');
-    }
-  }, []);
+    if (!hasWebGL) setViewMode('List');
+  }, [hasWebGL]);
 
-  // Fetch record & relationships
-  const loadObjectData = useCallback(async (id: string, companyId: string) => {
+  // Fetch record & relationships with AbortSignal cancellation (Requirement 2.1)
+  const loadObjectData = useCallback(async (id: string, companyId: string, isInitial: boolean = false) => {
+    // Abort previous in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
-      setLoading(true);
-      setError(null);
+      if (isInitial) {
+        setLoading(true);
+      } else {
+        setIsNavigating(true);
+      }
+      setErrorType('none');
+      setErrorMessage(null);
 
       const [obj, rels] = await Promise.all([
-        dataProvider.getObject(id, companyId),
-        dataProvider.getRelationships(id, companyId)
+        dataProvider.getObject(id, companyId, controller.signal),
+        dataProvider.getRelationships(id, companyId, controller.signal)
       ]);
+
+      if (controller.signal.aborted) return;
 
       setCurrentObject(obj);
       setRelationshipGroups(rels);
 
-      // Initialize or update breadcrumbs
+      if (obj.restricted) {
+        setCurrentObject(null);
+        setRelationshipGroups([]);
+        setErrorType('unavailable');
+        setErrorMessage('This record is unavailable');
+        return;
+      }
+
+      // Rebuild breadcrumbs dynamically from ID / loaded record (Requirement 1.7: never trust stored labels)
       setBreadcrumbs(prev => {
         if (prev.length === 0) {
           return [
@@ -105,249 +145,356 @@ export const ObjectSpaceExplorer: React.FC<ObjectSpaceExplorerProps> = ({
             { id: obj.id, label: obj.name, type: obj.type }
           ];
         }
-        // If already in trail, preserve up to that point
         const existingIdx = prev.findIndex(item => item.id === obj.id);
         if (existingIdx !== -1) {
           return prev.slice(0, existingIdx + 1);
         }
-        // Otherwise append
         return [...prev, { id: obj.id, label: obj.name, type: obj.type }];
       });
-    } catch (err: any) {
-      console.error('Failed to load object:', err);
-      const msg = err.message || 'Could not load this information';
-      setError(msg);
-      if (onError) onError(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [dataProvider, onError]);
 
-  // Detect company context changes
-  const prevCompanyRef = useRef(companyContext);
-  const isInitialMount = useRef(true);
-
-  useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      const targetId = initialReturnContext?.objectId || startingId;
-      if (initialReturnContext) {
-        setBreadcrumbs(initialReturnContext.breadcrumbTrail);
-        setViewMode(initialReturnContext.viewMode);
-        if (initialReturnContext.camera) {
-          currentCameraRef.current = initialReturnContext.camera;
-          setCameraTrigger({
-            action: 'restore',
-            targetState: initialReturnContext.camera,
-            timestamp: performance.now()
-          });
+      // Restore active collection group if panel was open
+      if (initialReturnContext?.openPanel === 'collection' && initialReturnContext.collectionFilter) {
+        const matchingGroup = rels.find(g => g.type === initialReturnContext.collectionFilter?.groupType);
+        if (matchingGroup) {
+          setActiveGroup(matchingGroup);
         }
       }
-      loadObjectData(targetId, companyContext);
-      return;
-    }
 
-    if (prevCompanyRef.current !== companyContext) {
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+
+      console.error('Failed to load object:', err);
+      const isUnavailable = err instanceof NotFoundError || 
+        err instanceof ForbiddenError || 
+        err.name === 'NotFoundError' || 
+        err.name === 'ForbiddenError' ||
+        err.message?.toLowerCase().includes('unavailable') ||
+        err.message?.toLowerCase().includes('not found');
+
+      if (isUnavailable) {
+        setErrorType('unavailable');
+        setErrorMessage('This record is unavailable');
+      } else {
+        setErrorType('network');
+        setErrorMessage(err.message || 'Could not load this information');
+      }
+
+      if (onError) onError(err);
+    } finally {
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setIsNavigating(false);
+      }
+    }
+  }, [dataProvider, onError, initialReturnContext]);
+
+  // Company change clears records, selection, history, panels, filters (Requirement 1.13)
+  useEffect(() => {
+    const contextChanged =
+      prevCompanyRef.current !== companyContext ||
+      prevStartingIdRef.current !== startingId ||
+      prevProviderRef.current !== dataProvider;
+
+    if (contextChanged) {
       prevCompanyRef.current = companyContext;
+      prevStartingIdRef.current = startingId;
+      prevProviderRef.current = dataProvider;
+
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+
       setCurrentObjectId(startingId);
+      setCurrentObject(null);
+      setRelationshipGroups([]);
       setBreadcrumbs([]);
-      setHistoryStack([]);
+      setHistoryIds([]);
+      setForwardIds([]);
       setActivePanel('none');
       setActiveGroup(null);
-      loadObjectData(startingId, companyContext);
+      setCollectionFilter(null);
+      loadObjectData(startingId, companyContext, true);
     }
-  }, [startingId, companyContext, initialReturnContext, loadObjectData]);
+  }, [companyContext, startingId, loadObjectData]);
 
-  // Navigation: Navigate to a new business record
-  const navigateToObject = useCallback((targetId: string, intermediateGroup?: RelationshipGroup) => {
-    if (currentObject) {
-      setHistoryStack(prev => [
-        ...prev,
-        {
-          objectId: currentObject.id,
-          breadcrumbs: [...breadcrumbs],
-          camera: currentCameraRef.current
-        }
-      ]);
+  // Initial load on mount or return
+  const isInitialMounted = useRef(false);
+  useEffect(() => {
+    if (!isInitialMounted.current) {
+      isInitialMounted.current = true;
+      const targetId = initialReturnContext?.objectId || startingId;
+      loadObjectData(targetId, companyContext, true);
     }
+  }, [companyContext, startingId, initialReturnContext, loadObjectData]);
+
+  // Navigation to a new business record
+  const navigateToObject = useCallback((targetId: string, intermediateGroup?: RelationshipGroup) => {
+    if (targetId === currentObjectId) return;
+
+    // Push current record ID to bounded history stack (max 50)
+    setHistoryIds(prev => {
+      const next = [...prev, currentObjectId];
+      return next.length > 50 ? next.slice(next.length - 50) : next;
+    });
+    setForwardIds([]); // Clear forward stack on new forward action
 
     if (intermediateGroup) {
-      // Add group category to breadcrumbs if not already present
       setBreadcrumbs(prev => [
         ...prev,
-        { id: `group_${intermediateGroup.type}`, label: intermediateGroup.label, type: 'category' }
+        { id: `group_${intermediateGroup.type}`, label: intermediateGroup.label, type: 'category', categoryKey: intermediateGroup.type }
       ]);
     }
 
     setActivePanel('none');
     setActiveGroup(null);
     setCurrentObjectId(targetId);
-    loadObjectData(targetId, companyContext);
-  }, [currentObject, breadcrumbs, companyContext, loadObjectData]);
 
-  // Back Navigation: Restore previous object, camera and breadcrumbs
-  const navigateBack = useCallback(() => {
-    if (historyStack.length === 0) return;
-
-    const previousState = historyStack[historyStack.length - 1];
-    setHistoryStack(prev => prev.slice(0, -1));
-
-    setCurrentObjectId(previousState.objectId);
-    setBreadcrumbs(previousState.breadcrumbs);
-    setActivePanel('none');
-    setActiveGroup(null);
-
-    if (previousState.camera) {
-      currentCameraRef.current = previousState.camera;
-      setCameraTrigger({
-        action: 'restore',
-        targetState: previousState.camera,
-        timestamp: performance.now()
-      });
+    if (onNavigate) {
+      onNavigate(targetId);
     }
 
-    loadObjectData(previousState.objectId, companyContext);
-  }, [historyStack, companyContext, loadObjectData]);
+    loadObjectData(targetId, companyContext, false);
+  }, [currentObjectId, companyContext, loadObjectData, onNavigate]);
 
-  // Breadcrumb Click Navigation
+  // Back Navigation: Restore previous object from history stack (Requirement 1.6)
+  const navigateBack = useCallback(() => {
+    if (historyIds.length === 0) return;
+
+    const previousId = historyIds[historyIds.length - 1];
+    setHistoryIds(prev => prev.slice(0, -1));
+    setForwardIds(prev => [...prev, currentObjectId]);
+
+    setActivePanel('none');
+    setActiveGroup(null);
+    setCurrentObjectId(previousId);
+
+    if (onNavigate) {
+      onNavigate(previousId);
+    }
+
+    loadObjectData(previousId, companyContext, false);
+  }, [historyIds, currentObjectId, companyContext, loadObjectData, onNavigate]);
+
+  // Forward Navigation
+  const navigateForward = useCallback(() => {
+    if (forwardIds.length === 0) return;
+
+    const nextId = forwardIds[forwardIds.length - 1];
+    setForwardIds(prev => prev.slice(0, -1));
+    setHistoryIds(prev => [...prev, currentObjectId]);
+
+    setActivePanel('none');
+    setActiveGroup(null);
+    setCurrentObjectId(nextId);
+
+    if (onNavigate) {
+      onNavigate(nextId);
+    }
+
+    loadObjectData(nextId, companyContext, false);
+  }, [forwardIds, currentObjectId, companyContext, loadObjectData, onNavigate]);
+
+  // Breadcrumb Click Navigation: Clicking an earlier breadcrumb trims history (Requirement 1.6)
   const handleBreadcrumbClick = (index: number, item: BreadcrumbItem) => {
     if (index === 0 && item.id === 'objects_root') {
-      // Navigate to initial root
       navigateToObject(startingId);
       return;
     }
-    if (item.type !== 'category' && item.id !== currentObjectId) {
+
+    if (item.type === 'category' && item.categoryKey) {
+      // Category crumbs (e.g. "Invoices") reopen that collection panel
+      const targetGroup = relationshipGroups.find(g => g.type === item.categoryKey);
+      if (targetGroup) {
+        setActiveGroup(targetGroup);
+        setActivePanel('collection');
+      }
+      return;
+    }
+
+    if (item.id !== currentObjectId) {
       navigateToObject(item.id);
     }
   };
 
-  // Open Execution Handoff (e.g. WorkOS PMS placeholder)
+  // Open Execution Handoff (Figure 3 item 3)
   const handleOpenExecution = (recordId: string) => {
     if (onOpenExecution) {
+      // Requirement 1.7: ReturnContext stores only IDs, filters, camera — no private records or names
       const returnCtx: ReturnContext = {
         objectId: currentObjectId,
-        breadcrumbTrail: breadcrumbs,
-        camera: currentCameraRef.current,
+        historyIds: [...historyIds],
         viewMode: viewMode,
-        timestamp: Date.now()
+        camera: currentCameraRef.current,
+        collectionFilter: collectionFilter,
+        openPanel: activePanel
       };
       onOpenExecution(recordId, returnCtx);
     }
   };
 
-  // Handlers for Sphere Clicks
+  // Spheres interactions
   const handleSelectCentral = () => {
-    // Single temporary panel rule: open details panel
     setActiveGroup(null);
     setActivePanel('details');
   };
 
   const handleSelectGroup = (group: RelationshipGroup) => {
-    // Single temporary panel rule: open collection panel
     setActiveGroup(group);
     setActivePanel('collection');
   };
 
   const handleSelectRecordFromCollection = (record: BusinessObject) => {
-    // Selecting record closes collection and centers the new record
     setActivePanel('none');
     navigateToObject(record.id, activeGroup || undefined);
   };
 
-  // Camera buttons
-  const handleZoomIn = () => {
-    setCameraTrigger({ action: 'zoomIn', timestamp: performance.now() });
-  };
-  const handleZoomOut = () => {
-    setCameraTrigger({ action: 'zoomOut', timestamp: performance.now() });
-  };
-  const handleResetCamera = () => {
-    setCameraTrigger({ action: 'reset', timestamp: performance.now() });
-  };
+  // Camera overlays
+  const handleZoomIn = () => setCameraTrigger({ action: 'zoomIn', timestamp: performance.now() });
+  const handleZoomOut = () => setCameraTrigger({ action: 'zoomOut', timestamp: performance.now() });
+  const handleResetCamera = () => setCameraTrigger({ action: 'reset', timestamp: performance.now() });
 
   return (
     <div className="workos-object-space" role="main">
+      {/* Live announcement region for accessibility (Requirement 2.5) */}
+      <div className="wos-sr-only" aria-live="polite" aria-atomic="true">
+        {currentObject ? `Current business record: ${currentObject.name}, ${currentObject.type}.` : ''}
+        {activePanel === 'details' && currentObject ? `Opened details panel for ${currentObject.name}.` : ''}
+        {activePanel === 'collection' && activeGroup ? `Opened ${activeGroup.label} collection panel.` : ''}
+      </div>
+
       {/* Action Row: Breadcrumbs, Global Search, View Switch */}
       <div className="wos-action-row">
         <Breadcrumb
           trail={breadcrumbs}
+          canGoBack={historyIds.length > 0}
+          canGoForward={forwardIds.length > 0}
+          onBack={navigateBack}
+          onForward={navigateForward}
           onNavigate={handleBreadcrumbClick}
         />
 
         <SearchBar
           dataProvider={dataProvider}
           companyId={companyContext}
+          connectedToId={currentObjectId}
           onSelectObject={(obj) => navigateToObject(obj.id)}
         />
 
         <ViewSwitch
           viewMode={viewMode}
+          has3D={hasWebGL}
           onChange={(mode) => setViewMode(mode)}
         />
       </div>
 
-      {/* Main View Area: 3D Scene or List View */}
-      {loading && !currentObject ? (
+      {/* WebGL fallback notice if applicable */}
+      {webGlFallbackMessage && (
         <div style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '12px'
+          padding: '6px 16px',
+          background: 'var(--wos-selection-light)',
+          color: 'var(--wos-selection)',
+          fontSize: '12px',
+          fontWeight: 500,
+          textAlign: 'center',
+          borderBottom: '1px solid var(--wos-border)'
         }}>
+          {webGlFallbackMessage}
+        </div>
+      )}
+
+      {/* Non-blocking Navigation Loading Indicator (Requirement 1.12) */}
+      {isNavigating && (
+        <div className="wos-loading-overlay-badge" aria-label="Loading record data">
+          <Loader2 size={14} className="wos-spin" />
+          <span>Updating object space...</span>
+        </div>
+      )}
+
+      {/* Main View Area: Initial Loading, Error States, 3D Scene or List View */}
+      {loading && !currentObject ? (
+        <div className="wos-center-container">
           <div className="wos-spinner" />
           <span style={{ fontSize: '14px', color: 'var(--wos-label-muted)', fontWeight: 500 }}>
             Loading object space...
           </span>
         </div>
-      ) : error ? (
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: '14px',
-          background: 'var(--wos-bg)'
-        }}>
+      ) : errorType === 'unavailable' ? (
+        /* Requirement 1.10: Forbidden / Not Found -> "This record is unavailable", no retry, no private fields */
+        <div className="wos-center-container">
+          <ShieldAlert size={36} color="var(--wos-selection)" />
+          <h2 style={{ fontSize: '18px', fontWeight: 700, margin: '8px 0 4px', color: 'var(--wos-label)' }}>
+            This record is unavailable
+          </h2>
+          <p style={{ margin: 0, fontSize: '13px', color: 'var(--wos-label-muted)', maxWidth: '320px', textAlign: 'center', lineHeight: 1.4 }}>
+            The requested business record does not exist or access has been restricted.
+          </p>
+          {historyIds.length > 0 && (
+            <button className="wos-retry-btn" onClick={navigateBack} style={{ marginTop: '8px' }}>
+              Return to previous object
+            </button>
+          )}
+        </div>
+      ) : errorType === 'network' ? (
+        /* Requirement 1.10: Network failure -> "Could not load this information" + Retry */
+        <div className="wos-center-container">
           <span style={{ fontSize: '15px', fontWeight: 600, color: '#c62828' }}>
-            {error}
+            {errorMessage || 'Could not load this information'}
           </span>
           <button
             className="wos-retry-btn"
-            onClick={() => loadObjectData(currentObjectId, companyContext)}
+            onClick={() => loadObjectData(currentObjectId, companyContext, false)}
           >
             Retry
           </button>
         </div>
-      ) : currentObject && viewMode === '3D' && hasWebGL ? (
+      ) : currentObject && hasWebGL ? (
         <>
-          <Scene
-            currentObject={currentObject}
-            relationshipGroups={relationshipGroups}
-            selectedGroupId={activeGroup?.type || null}
-            onSelectCentral={handleSelectCentral}
-            onSelectGroup={handleSelectGroup}
-            cameraTrigger={cameraTrigger}
-            onCameraChange={(cam) => {
-              currentCameraRef.current = cam;
-            }}
-            backgroundColor={theme?.backgroundColor || '#F5F3FA'}
-          />
+          <div className={viewMode === '3D' ? undefined : 'wos-scene-kept-alive'}>
+            <Scene
+              currentObject={currentObject}
+              relationshipGroups={relationshipGroups}
+              selectedGroupId={activeGroup?.type || null}
+              isDetailsOpen={activePanel === 'details'}
+              onSelectCentral={handleSelectCentral}
+              onSelectGroup={handleSelectGroup}
+              onNavigateToObject={navigateToObject}
+              initialCamera={initialReturnContext?.camera}
+              cameraTrigger={cameraTrigger}
+              onCameraChange={(cam) => {
+                currentCameraRef.current = cam;
+              }}
+              theme={theme}
+              onSceneError={() => {
+                setHasWebGL(false);
+                setViewMode('List');
+                setWebGlFallbackMessage('3D scene context lost. Restored in accessible List view.');
+              }}
+            />
+          </div>
 
-          <CameraControlsOverlay
-            onZoomIn={handleZoomIn}
-            onZoomOut={handleZoomOut}
-            onReset={handleResetCamera}
-          />
+          {viewMode === '3D' ? (
+            <CameraControlsOverlay
+              onZoomIn={handleZoomIn}
+              onZoomOut={handleZoomOut}
+              onReset={handleResetCamera}
+            />
+          ) : (
+            <ListView
+              currentObject={currentObject}
+              relationshipGroups={relationshipGroups}
+              dataProvider={dataProvider}
+              onSelectCentral={handleSelectCentral}
+              onSelectGroup={handleSelectGroup}
+              onNavigateToObject={navigateToObject}
+              onOpenExecution={handleOpenExecution}
+            />
+          )}
         </>
       ) : currentObject ? (
         <ListView
           currentObject={currentObject}
           relationshipGroups={relationshipGroups}
+          dataProvider={dataProvider}
           onSelectCentral={handleSelectCentral}
           onSelectGroup={handleSelectGroup}
           onNavigateToObject={navigateToObject}
@@ -355,10 +502,13 @@ export const ObjectSpaceExplorer: React.FC<ObjectSpaceExplorerProps> = ({
         />
       ) : null}
 
-      {/* Temporary Side Panels (Exactly one at a time) */}
+      {/* Temporary Side Panels (Single Drawer Rule: Details OR Collection) */}
       {activePanel === 'details' && currentObject && (
         <DetailsPanel
           object={currentObject}
+          relationshipGroups={relationshipGroups}
+          dataProvider={dataProvider}
+          companyId={companyContext}
           onClose={() => setActivePanel('none')}
           onNavigateToObject={navigateToObject}
           onOpenExecution={handleOpenExecution}
@@ -371,6 +521,8 @@ export const ObjectSpaceExplorer: React.FC<ObjectSpaceExplorerProps> = ({
           group={activeGroup}
           dataProvider={dataProvider}
           companyId={companyContext}
+          initialFilter={collectionFilter}
+          onFilterChange={(filter) => setCollectionFilter(filter)}
           onClose={() => setActivePanel('none')}
           onSelectRecord={handleSelectRecordFromCollection}
         />

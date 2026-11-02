@@ -7,6 +7,15 @@ export default defineConfig({
     port: 3000,
     host: true
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ['three', '@react-three/fiber', '@react-three/drei']
+        }
+      }
+    }
+  },
   test: {
     globals: true,
     environment: 'jsdom',
