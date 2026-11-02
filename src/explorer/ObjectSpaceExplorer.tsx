@@ -23,6 +23,9 @@ import './styles/explorer.css';
 
 const detectWebGL = (): boolean => {
   if (typeof document === 'undefined') return false;
+  if (typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent)) {
+    return false;
+  }
   try {
     const canvas = document.createElement('canvas');
     const attributes = { failIfMajorPerformanceCaveat: true };
@@ -474,7 +477,6 @@ export const ObjectSpaceExplorer: React.FC<ObjectSpaceExplorerProps> = ({
                 if (sceneErrorHandledRef.current) return;
                 sceneErrorHandledRef.current = true;
                 window.setTimeout(() => {
-                  setHasWebGL(false);
                   setViewMode('List');
                   setWebGlFallbackMessage('3D scene context lost. Restored in accessible List view.');
                 }, 0);

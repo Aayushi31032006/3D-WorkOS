@@ -17,6 +17,18 @@ npm run dev
 ```
 > Open [http://localhost:3000](http://localhost:3000) in your browser. No API keys or credentials required.
 
+### Clone and run on another device
+```bash
+git clone https://github.com/Aayushi31032006/3D-WorkOS.git
+cd 3D-WorkOS
+npm install
+npm run dev -- --host 0.0.0.0
+```
+Open `http://localhost:3000` on the same computer, or use the host machine's
+local network address (for example `http://192.168.1.20:3000`) from another
+device. Node.js 20 or newer is recommended. The app has no credentials or
+environment variables.
+
 ### Run Automated Tests
 ```bash
 npm test
@@ -121,6 +133,16 @@ F:\3DWorkOS\
 - Clicking **List** switches to an accessible tabular view with full keyboard navigation (`Tab`, `Enter`), ARIA landmarks, and visible focus outlines.
 - Selection and active object state are preserved across switches.
 - Functions as the automatic fallback if WebGL is unavailable.
+
+### Responsive host layout
+
+The WorkOS navigation and demo controls remain available across laptop,
+tablet, and phone widths. On narrow screens the navigation and test controls
+become horizontally scrollable, while the explorer, collection drawers, and
+project handoff screen use the full available viewport. The embedded Electron
+preview uses the accessible List fallback when its WebGL implementation
+cannot create a stable Three.js renderer; regular Edge, Chrome, and Firefox
+use the 3D view when WebGL is available.
 
 ---
 

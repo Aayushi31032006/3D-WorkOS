@@ -94,23 +94,11 @@ export const App: React.FC = () => {
         }}
       />
 
-      {/* Main Content Area */}
-      {activeNavTab !== 'object_space' ? (
-        <WorkOSModuleView
-          module={activeNavTab}
-          onReturnToObjectSpace={() => {
-            setActiveNavTab('object_space');
-            setActiveScreen('object_space');
-          }}
-        />
-      ) : activeScreen === 'pms_placeholder' && executionRecordId && savedReturnContext ? (
-        <PMSPlaceholder
-          recordId={executionRecordId}
-          record={executionRecord}
-          returnContext={savedReturnContext}
-          onReturn={handleReturnFromPMS}
-        />
-      ) : (
+      {/* Main Content Area. Keep the 3D tree mounted while host screens change. */}
+      <div
+        className="workos-explorer-shell"
+        aria-hidden={activeNavTab !== 'object_space' || activeScreen !== 'object_space'}
+      >
         <ObjectSpaceExplorer
           startingId={startingObjectId}
           companyContext={currentCompany}
@@ -118,7 +106,28 @@ export const App: React.FC = () => {
           initialReturnContext={savedReturnContext}
           onOpenExecution={handleOpenExecution}
         />
-      )}
+      </div>
+
+      {activeNavTab !== 'object_space' ? (
+        <div className="workos-host-overlay">
+          <WorkOSModuleView
+            module={activeNavTab}
+            onReturnToObjectSpace={() => {
+              setActiveNavTab('object_space');
+              setActiveScreen('object_space');
+            }}
+          />
+        </div>
+      ) : activeScreen === 'pms_placeholder' && executionRecordId && savedReturnContext ? (
+        <div className="workos-host-overlay">
+          <PMSPlaceholder
+            recordId={executionRecordId}
+            record={executionRecord}
+            returnContext={savedReturnContext}
+            onReturn={handleReturnFromPMS}
+          />
+        </div>
+      ) : null}
     </div>
   );
 };
