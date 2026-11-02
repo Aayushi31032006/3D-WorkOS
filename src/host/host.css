@@ -27,13 +27,17 @@ body {
 }
 
 .workos-host-overlay {
-  position: absolute;
+  position: fixed;
   inset: var(--wos-header-height) 0 0;
-  z-index: 40;
+  z-index: 1000;
+  background: #F5F3FA;
+  isolation: isolate;
 }
 
 .workos-host-overlay > * {
+  width: 100%;
   height: 100%;
+  min-height: 0;
 }
 
 /* WorkOS Top Header */
