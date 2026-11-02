@@ -162,6 +162,7 @@ and `Test Restricted`. The 1K mode adds stable invoice IDs beginning at
 
 ## Testing & Quality Assurance
 
-The Vitest suite covers the initial graph, List view journey, handoff and
-return context, dynamic project links, stable IDs, empty/error/restricted
-states, company changes and large-collection paging.
+The Vitest suite contains 11 acceptance tests covering the initial graph,
+List view journey, handoff and return context, dynamic project links, stable
+IDs, empty/error/restricted states, company changes, blank-space behavior,
+and large-collection paging.
