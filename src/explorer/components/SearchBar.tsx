@@ -53,8 +53,9 @@ export const SearchBar: React.FC<SearchBarProps> = ({
         setResults(matches);
         setIsOpen(true);
         setActiveIndex(-1);
-      } catch (err: any) {
-        if (err.name !== 'AbortError') {
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err : new Error('Search failed');
+        if (error.name !== 'AbortError') {
           setSearchError('Search failed');
           setResults([]);
           setIsOpen(true);

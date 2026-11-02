@@ -160,26 +160,27 @@ export const ObjectSpaceExplorer: React.FC<ObjectSpaceExplorerProps> = ({
         }
       }
 
-    } catch (err: any) {
-      if (err.name === 'AbortError') return;
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error('Could not load this information');
+      if (error.name === 'AbortError') return;
 
-      console.error('Failed to load object:', err);
+      console.error('Failed to load object:', error);
       const isUnavailable = err instanceof NotFoundError || 
         err instanceof ForbiddenError || 
-        err.name === 'NotFoundError' || 
-        err.name === 'ForbiddenError' ||
-        err.message?.toLowerCase().includes('unavailable') ||
-        err.message?.toLowerCase().includes('not found');
+        error.name === 'NotFoundError' ||
+        error.name === 'ForbiddenError' ||
+        error.message.toLowerCase().includes('unavailable') ||
+        error.message.toLowerCase().includes('not found');
 
       if (isUnavailable) {
         setErrorType('unavailable');
         setErrorMessage('This record is unavailable');
       } else {
         setErrorType('network');
-        setErrorMessage(err.message || 'Could not load this information');
+        setErrorMessage(error.message || 'Could not load this information');
       }
 
-      if (onError) onError(err);
+      if (onError) onError(error);
     } finally {
       if (!controller.signal.aborted) {
         setLoading(false);

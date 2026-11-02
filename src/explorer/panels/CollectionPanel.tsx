@@ -155,9 +155,10 @@ export const CollectionPanel: React.FC<CollectionPanelProps> = ({
       setHasMore(res.hasMore);
       setTotalCount(res.total);
       setPage(targetPage);
-    } catch (err: any) {
-      if (requestId === requestIdRef.current && err.name !== 'AbortError') {
-        setErrorMessage(err.message || 'Could not load this information');
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error('Could not load this information');
+      if (requestId === requestIdRef.current && error.name !== 'AbortError') {
+        setErrorMessage(error.message || 'Could not load this information');
       }
     } finally {
       if (requestId === requestIdRef.current) {

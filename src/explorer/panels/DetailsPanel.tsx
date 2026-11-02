@@ -81,8 +81,9 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
         if (active) {
           setTimeline(events);
         }
-      } catch (err: any) {
-        if (active && err.name !== 'AbortError') {
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err : new Error('Failed to load activity');
+        if (active && error.name !== 'AbortError') {
           setTimelineError('Failed to load activity');
         }
       } finally {
