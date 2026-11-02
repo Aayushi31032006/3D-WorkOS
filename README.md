@@ -133,6 +133,7 @@ F:\3DWorkOS\
 - Clicking **List** switches to an accessible tabular view with full keyboard navigation (`Tab`, `Enter`), ARIA landmarks, and visible focus outlines.
 - Selection and active object state are preserved across switches.
 - Functions as the automatic fallback if WebGL is unavailable.
+- The Three.js scene is lazy-loaded so List/fallback users do not pay the 3D bundle cost until a WebGL scene is available.
 
 ### Responsive host layout
 

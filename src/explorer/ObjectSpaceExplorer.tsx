@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { 
   ObjectSpaceExplorerProps, 
   BusinessObject, 
@@ -10,7 +10,6 @@ import {
   NotFoundError,
   ForbiddenError
 } from '../types';
-import { Scene } from './scene/Scene';
 import { ListView } from './views/ListView';
 import { DetailsPanel } from './panels/DetailsPanel';
 import { CollectionPanel } from './panels/CollectionPanel';
@@ -20,6 +19,8 @@ import { ViewSwitch } from './components/ViewSwitch';
 import { CameraControlsOverlay } from './components/CameraControlsOverlay';
 import { ShieldAlert, Loader2 } from 'lucide-react';
 import './styles/explorer.css';
+
+const Scene = lazy(() => import('./scene/Scene').then(({ Scene: scene }) => ({ default: scene })));
 
 const detectWebGL = (): boolean => {
   if (typeof document === 'undefined') return false;
@@ -459,29 +460,31 @@ export const ObjectSpaceExplorer: React.FC<ObjectSpaceExplorerProps> = ({
       ) : currentObject && hasWebGL ? (
         <>
           <div className={viewMode === '3D' ? undefined : 'wos-scene-kept-alive'}>
-            <Scene
-              currentObject={currentObject}
-              relationshipGroups={relationshipGroups}
-              selectedGroupId={activeGroup?.type || null}
-              isDetailsOpen={activePanel === 'details'}
-              onSelectCentral={handleSelectCentral}
-              onSelectGroup={handleSelectGroup}
-              onNavigateToObject={navigateToObject}
-              initialCamera={initialReturnContext?.camera}
-              cameraTrigger={cameraTrigger}
-              onCameraChange={(cam) => {
-                currentCameraRef.current = cam;
-              }}
-              theme={theme}
-              onSceneError={() => {
-                if (sceneErrorHandledRef.current) return;
-                sceneErrorHandledRef.current = true;
-                window.setTimeout(() => {
-                  setViewMode('List');
-                  setWebGlFallbackMessage('3D scene context lost. Restored in accessible List view.');
-                }, 0);
-              }}
-            />
+            <Suspense fallback={<div className="wos-center-container"><div className="wos-spinner" /><span>Preparing 3D view...</span></div>}>
+              <Scene
+                currentObject={currentObject}
+                relationshipGroups={relationshipGroups}
+                selectedGroupId={activeGroup?.type || null}
+                isDetailsOpen={activePanel === 'details'}
+                onSelectCentral={handleSelectCentral}
+                onSelectGroup={handleSelectGroup}
+                onNavigateToObject={navigateToObject}
+                initialCamera={initialReturnContext?.camera}
+                cameraTrigger={cameraTrigger}
+                onCameraChange={(cam) => {
+                  currentCameraRef.current = cam;
+                }}
+                theme={theme}
+                onSceneError={() => {
+                  if (sceneErrorHandledRef.current) return;
+                  sceneErrorHandledRef.current = true;
+                  window.setTimeout(() => {
+                    setViewMode('List');
+                    setWebGlFallbackMessage('3D scene context lost. Restored in accessible List view.');
+                  }, 0);
+                }}
+              />
+            </Suspense>
           </div>
 
           {viewMode === '3D' ? (
