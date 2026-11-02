@@ -8,9 +8,7 @@
 
 ## Team
 
-- Aayushi
-- Jitendra
-- Ramani
+- Aayushi Jitendra Ramani
 - Shreya Hande
 
 ## Project overview
