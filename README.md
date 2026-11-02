@@ -8,12 +8,12 @@ An interactive 3D business-object graph and navigation experience built for Work
 
 ### Installation
 ```bash
-npm install
+pnpm install --frozen-lockfile
 ```
 
 ### Run Local Development Server
 ```bash
-npm run dev
+pnpm dev
 ```
 > Open [http://localhost:3000](http://localhost:3000) in your browser. No API keys or credentials required.
 
@@ -21,8 +21,8 @@ npm run dev
 ```bash
 git clone https://github.com/Aayushi31032006/3D-WorkOS.git
 cd 3D-WorkOS
-npm install
-npm run dev -- --host 0.0.0.0
+pnpm install --frozen-lockfile
+pnpm dev --host 0.0.0.0
 ```
 Open `http://localhost:3000` on the same computer, or use the host machine's
 local network address (for example `http://192.168.1.20:3000`) from another
@@ -31,12 +31,12 @@ environment variables.
 
 ### Run Automated Tests
 ```bash
-npm test
+pnpm test
 ```
 
 ### Production Build
 ```bash
-npm run build
+pnpm build
 ```
 
 ---
