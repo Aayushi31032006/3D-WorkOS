@@ -147,6 +147,40 @@ body {
   font-weight: 600;
 }
 
+.workos-pms-screen .wos-primary-action-btn,
+.workos-mock-module-screen .wos-primary-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  border: 1px solid #7046B2;
+  border-radius: 12px;
+  padding: 10px 20px;
+  background: #7046B2;
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(112, 70, 178, 0.24);
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.workos-pms-screen .wos-primary-action-btn:hover,
+.workos-mock-module-screen .wos-primary-action-btn:hover {
+  background: #5e369b;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(112, 70, 178, 0.32);
+}
+
+.workos-pms-screen .wos-primary-action-btn:focus-visible,
+.workos-mock-module-screen .wos-primary-action-btn:focus-visible {
+  outline: 3px solid rgba(112, 70, 178, 0.28);
+  outline-offset: 3px;
+}
+
 /* PMS Placeholder Screen (Requirement 1.16 & Host Demo) */
 .workos-pms-screen {
   flex: 1;
