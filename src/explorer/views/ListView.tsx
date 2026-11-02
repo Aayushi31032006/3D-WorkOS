@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { 
   BusinessObject, 
   RelationshipGroup,
@@ -25,6 +26,7 @@ export const ListView: React.FC<ListViewProps> = ({
   onNavigateToObject,
   onOpenExecution
 }) => {
+  const reducedMotion = useReducedMotion();
   // Handle group click or Enter key adhering to Single-Record Group Rule (Requirement 1.5)
   const handleGroupInteraction = (group: RelationshipGroup) => {
     if (group.count === 1 && group.recordIds && group.recordIds[0]) {
@@ -39,10 +41,13 @@ export const ListView: React.FC<ListViewProps> = ({
   };
 
   return (
-    <div 
+    <motion.div
       className="wos-list-view-container"
       role="region"
       aria-label="List view of business records"
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reducedMotion ? 0 : 0.28, ease: 'easeOut' }}
     >
       {/* Central Object Header Banner */}
       <div style={{
@@ -119,10 +124,10 @@ export const ListView: React.FC<ListViewProps> = ({
                 </td>
               </tr>
             ) : (
-              relationshipGroups.map((group) => {
+              relationshipGroups.map((group, index) => {
                 const isSingle = group.count === 1 && Boolean(group.recordIds?.[0]);
                 return (
-                  <tr 
+                  <motion.tr
                     key={group.type + '_' + group.label}
                     onClick={() => handleGroupInteraction(group)}
                     tabIndex={0}
@@ -134,6 +139,12 @@ export const ListView: React.FC<ListViewProps> = ({
                     }}
                     aria-label={`${group.label} group containing ${group.count} records. ${isSingle ? 'Press Enter to open record directly.' : 'Press Enter to open collection panel.'}`}
                     style={{ cursor: 'pointer' }}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: reducedMotion ? 0 : 0.2,
+                      delay: reducedMotion ? 0 : Math.min(index * 0.035, 0.21)
+                    }}
                   >
                     <td style={{ fontWeight: 600, color: 'var(--wos-label)' }}>
                       {group.label}
@@ -168,13 +179,13 @@ export const ListView: React.FC<ListViewProps> = ({
                         <ArrowRight size={14} />
                       </button>
                     </td>
-                  </tr>
+                  </motion.tr>
                 );
               })
             )}
           </tbody>
         </table>
       </div>
-    </div>
+    </motion.div>
   );
 };

@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { X, ArrowRight, ShieldAlert, Loader2, ExternalLink } from 'lucide-react';
 import { BusinessObject, DataProvider, TimelineEvent, RelationshipGroup } from '../../types';
 
@@ -21,6 +22,7 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   onNavigateToObject,
   onOpenExecution
 }) => {
+  const reducedMotion = useReducedMotion();
   const panelRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -144,12 +146,16 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
   const contactCount = relationshipGroups.find(g => g.type === 'person')?.count ?? 0;
 
   return (
-    <aside 
+    <motion.aside
       ref={panelRef}
       className="wos-drawer-panel"
       role="region"
       aria-label={`${object.name} details`}
       onClick={(e) => e.stopPropagation()}
+      initial={{ opacity: 0, x: 28 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 28 }}
+      transition={{ duration: reducedMotion ? 0 : 0.28, ease: 'easeOut' }}
     >
       <div className="wos-panel-header">
         <h2 className="wos-panel-title">{title}</h2>
@@ -453,6 +459,6 @@ export const DetailsPanel: React.FC<DetailsPanelProps> = ({
           </>
         )}
       </div>
-    </aside>
+    </motion.aside>
   );
 };

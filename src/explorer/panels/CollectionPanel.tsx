@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { X, Search, ChevronRight, Loader2, RotateCcw } from 'lucide-react';
 import { BusinessObject, RelationshipGroup, DataProvider, CollectionFilterState } from '../../types';
 
@@ -23,6 +24,7 @@ export const CollectionPanel: React.FC<CollectionPanelProps> = ({
   onClose,
   onSelectRecord
 }) => {
+  const reducedMotion = useReducedMotion();
   const panelRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -195,12 +197,16 @@ export const CollectionPanel: React.FC<CollectionPanelProps> = ({
   const emptyWording = `No ${group.label.toLowerCase()} linked yet`;
 
   return (
-    <aside 
+    <motion.aside
       ref={panelRef}
       className="wos-drawer-panel"
       role="region"
       aria-label={panelTitle}
       onClick={(e) => e.stopPropagation()}
+      initial={{ opacity: 0, x: 28 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 28 }}
+      transition={{ duration: reducedMotion ? 0 : 0.28, ease: 'easeOut' }}
     >
       {/* Panel Header */}
       <div className="wos-panel-header">
@@ -354,6 +360,6 @@ export const CollectionPanel: React.FC<CollectionPanelProps> = ({
           </div>
         )}
       </div>
-    </aside>
+    </motion.aside>
   );
 };

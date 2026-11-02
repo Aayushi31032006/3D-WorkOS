@@ -171,26 +171,22 @@ export const Scene: React.FC<SceneProps> = ({
         <color attach="background" args={[backgroundColor]} />
         <fog attach="fog" args={[backgroundColor, 16, 42]} />
 
-        {/* Ambient & Studio Directional Lighting */}
-        <ambientLight intensity={0.92} color="#FFFFFF" />
+        {/* Single softbox direction keeps the sphere highlights and shadows coherent. */}
+        <ambientLight intensity={0.34} color="#FFFFFF" />
         <directionalLight
-          position={[10, 16, 8]}
-          intensity={1.25}
+          position={[-8, 14, 10]}
+          intensity={2.2}
           castShadow
-          shadow-mapSize-width={1024}
-          shadow-mapSize-height={1024}
+          shadow-mapSize-width={2048}
+          shadow-mapSize-height={2048}
           shadow-camera-near={0.5}
           shadow-camera-far={35}
           shadow-camera-left={-12}
           shadow-camera-right={12}
           shadow-camera-top={12}
           shadow-camera-bottom={-12}
-          shadow-bias={-0.0001}
-        />
-        <directionalLight
-          position={[-10, 8, -6]}
-          intensity={0.4}
-          color="#D9C7F3"
+          shadow-bias={-0.0002}
+          shadow-normalBias={0.035}
         />
 
         {/* Matte Floor with Concentric Circular Grooves */}

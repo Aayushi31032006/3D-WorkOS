@@ -1,6 +1,6 @@
 # WorkOS Object Space Explorer
 
-An interactive 3D business-object graph and navigation experience built for WorkOS. It enables operators to visualize, explore, and traverse business record relationships—such as customers, invoices, projects, tasks, contacts, and contracts—using physical 3D spheres, relationship connections, breadcrumbs, search, and a synchronized List view fallback.
+An interactive 3D business-object graph and navigation experience built for WorkOS. It enables operators to visualize, explore, and traverse business record relationships—such as customers, invoices, projects, tasks, contacts, and contracts—using physical 3D spheres, relationship connections, breadcrumbs, search, and a synchronized List view fallback. Framer Motion provides restrained transitions for the List view and temporary panels, with reduced-motion support.
 
 ---
 
